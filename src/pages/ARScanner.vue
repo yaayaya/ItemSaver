@@ -1,24 +1,22 @@
 <template>
-  <div ref="arContainerEl" class="ar-page-container">
-    <!-- MindAR + A-Frame Scene (embedded inside container) -->
+  <div>
+    <!-- MindAR + A-Frame Scene — native fullscreen, no embedded -->
     <a-scene
-      v-if="!arError"
+      v-if="!arError && stoneItem"
       ref="aSceneEl"
-      mindar-image="imageTargetSrc: /assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+      mindar-image="imageTargetSrc: /assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no; filterMinCF: 0.0001; filterBeta: 0.00001; warmupTolerance: 12; missTolerance: 6;"
       color-space="sRGB"
       renderer="colorManagement: true; antialias: true; alpha: true"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
       loading-screen="enabled: false"
-      embedded
     >
       <a-assets>
-        <a-asset-item id="stone-model" :src="stoneItem?.model_url || ''"></a-asset-item>
+        <a-asset-item id="stone-model" :src="stoneItem.model_url"></a-asset-item>
       </a-assets>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- Target index 0 = the stone slab image in targets.mind -->
       <a-entity ref="targetEntity" mindar-image-target="targetIndex: 0">
         <a-light type="ambient" intensity="0.6"></a-light>
         <a-light type="directional" intensity="1.2" position="5 10 7"></a-light>
@@ -26,14 +24,14 @@
           ref="modelEntity"
           src="#stone-model"
           position="0 0 0"
+          scale="0.1 0.1 0.1"
         ></a-gltf-model>
       </a-entity>
     </a-scene>
 
-    <!-- Vue HUD overlay -->
+    <!-- HUD overlay — fixed on top of fullscreen A-Frame -->
     <div v-if="!arError" class="ar-hud">
-      <!-- Top Bar -->
-      <div class="pointer-events-auto flex items-center justify-between p-4">
+      <div class="ar-hud-topbar pointer-events-auto flex items-center justify-between p-4">
         <router-link
           to="/"
           class="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm text-white text-sm hover:bg-black/70 transition-colors"
@@ -50,11 +48,10 @@
         </div>
       </div>
 
-      <!-- Bottom Controls (visible when tracking) -->
       <Transition name="slide-up">
         <div
           v-if="tracking"
-          class="pointer-events-auto absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 p-4"
+          class="ar-hud-bottom pointer-events-auto absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 p-4"
         >
           <div class="flex items-center justify-between mb-3">
             <div>
@@ -95,7 +92,7 @@
     </div>
 
     <!-- Error screen -->
-    <div v-if="arError" class="absolute inset-0 z-30 flex items-center justify-center bg-slate-900">
+    <div v-if="arError" class="fixed inset-0 z-30 flex items-center justify-center bg-slate-900">
       <div class="text-center p-8">
         <div class="text-5xl mb-4">📷</div>
         <h2 class="text-xl font-bold text-white mb-2">AR 功能無法啟動</h2>
@@ -119,7 +116,6 @@ import { useSiteData } from '../composables/useSiteData.js'
 const { items } = useSiteData()
 const stoneItem = ref(null)
 
-const arContainerEl = ref(null)
 const aSceneEl = ref(null)
 const targetEntity = ref(null)
 const modelEntity = ref(null)
@@ -134,20 +130,47 @@ const isTransitioning = ref(false)
 
 let currentModel = null
 const originalMaterials = new Map()
-let syncVideoTimer = null
+let restoreGetUserMedia = null
+
+function preferRearCamera() {
+  const mediaDevices = navigator.mediaDevices
+  if (!mediaDevices?.getUserMedia || restoreGetUserMedia) return
+
+  const originalGetUserMedia = mediaDevices.getUserMedia.bind(mediaDevices)
+  restoreGetUserMedia = () => {
+    mediaDevices.getUserMedia = originalGetUserMedia
+    restoreGetUserMedia = null
+  }
+
+  mediaDevices.getUserMedia = async (constraints = {}) => {
+    const baseVideo = typeof constraints.video === 'object' ? constraints.video : {}
+    const preferredConstraints = {
+      ...constraints,
+      audio: constraints.audio ?? false,
+      video: {
+        ...baseVideo,
+        facingMode: { ideal: 'environment' }
+      }
+    }
+
+    try {
+      return await originalGetUserMedia(preferredConstraints)
+    } catch (err) {
+      console.warn('Rear camera preference unavailable, fallback to default stream.', err)
+      return originalGetUserMedia(constraints)
+    }
+  }
+}
 
 onMounted(async () => {
+  preferRearCamera()
   stoneItem.value = items.value[0]
 
   await nextTick()
   const sceneEl = aSceneEl.value
-  const containerEl = arContainerEl.value
-  if (!sceneEl || !containerEl) return
+  if (!sceneEl) return
 
-  // Wait for A-Frame scene to be ready
-  const onSceneReady = () => {
-    sessionReady.value = true
-  }
+  const onSceneReady = () => { sessionReady.value = true }
 
   if (sceneEl.hasLoaded) {
     onSceneReady()
@@ -155,49 +178,19 @@ onMounted(async () => {
     sceneEl.addEventListener('loaded', onSceneReady)
   }
 
-  // MindAR also emits arReady
-  const syncMindARVideo = () => {
-    const videoEl = containerEl.querySelector('video')
-    if (!videoEl) return false
-    videoEl.style.position = 'absolute'
-    videoEl.style.top = '0'
-    videoEl.style.left = '0'
-    videoEl.style.width = '100%'
-    videoEl.style.height = '100%'
-    videoEl.style.objectFit = 'cover'
-    videoEl.style.zIndex = '1'
-    return true
-  }
-
-  sceneEl.addEventListener('arReady', () => {
-    sessionReady.value = true
-    syncMindARVideo()
-  })
-
+  sceneEl.addEventListener('arReady', () => { sessionReady.value = true })
   sceneEl.addEventListener('arError', () => {
     arError.value = '相機啟動失敗，請允許相機權限後重試。'
   })
-  await nextTick()
-  syncMindARVideo()
-  syncVideoTimer = window.setInterval(() => {
-    if (syncMindARVideo() && syncVideoTimer) {
-      clearInterval(syncVideoTimer)
-      syncVideoTimer = null
-    }
-  }, 300)
 
-  // Listen for target found/lost on the target entity
+  await nextTick()
+
   const tgtEl = targetEntity.value
   if (tgtEl) {
-    tgtEl.addEventListener('targetFound', () => {
-      tracking.value = true
-    })
-    tgtEl.addEventListener('targetLost', () => {
-      tracking.value = false
-    })
+    tgtEl.addEventListener('targetFound', () => { tracking.value = true })
+    tgtEl.addEventListener('targetLost', () => { tracking.value = false })
   }
 
-  // When the model loads, grab the Three.js object for texture toggling
   const modelEl = modelEntity.value
   if (modelEl) {
     modelEl.addEventListener('model-loaded', () => {
@@ -206,22 +199,22 @@ onMounted(async () => {
       currentModel = mesh
       originalMaterials.clear()
 
-      // Auto-scale: MindAR target width = 1 unit, fit model to match
+      // Auto-scale: keep model about 15% smaller than the tracked stone target
       const box = new THREE.Box3().setFromObject(mesh)
       const size = box.getSize(new THREE.Vector3())
       const maxDim = Math.max(size.x, size.y, size.z)
       if (maxDim > 0) {
-        const targetSize = 0.5 // half the target width — looks proportional to real object
+        const targetSize = 1.1
         const s = targetSize / maxDim
         modelEl.setAttribute('scale', `${s} ${s} ${s}`)
-
-        // Re-center the model above the image plane
+        // Center model at marker origin to reduce persistent alignment offset
         const center = box.getCenter(new THREE.Vector3())
-        modelEl.setAttribute('position', `${-center.x * s} ${-center.y * s + size.y * s * 0.5} ${-center.z * s}`)
+        modelEl.setAttribute('position', `${-center.x * s} ${-center.y * s} ${-center.z * s}`)
       }
 
       mesh.traverse((child) => {
         if (child.isMesh) {
+          child.frustumCulled = false
           const mats = Array.isArray(child.material) ? child.material : [child.material]
           originalMaterials.set(
             child.uuid,
@@ -233,32 +226,34 @@ onMounted(async () => {
           )
         }
       })
+
+      // Default state: dormant (no color). User taps "喚醒記憶" to restore full color.
+      applyDormantLook()
     })
   }
 })
 
 onBeforeUnmount(() => {
-  if (syncVideoTimer) clearInterval(syncVideoTimer)
-  // Stop MindAR camera cleanly
   const scene = aSceneEl.value
   if (scene) {
     const arSystem = scene.systems?.['mindar-image-system']
     if (arSystem && arSystem.stop) arSystem.stop()
   }
+  if (restoreGetUserMedia) restoreGetUserMedia()
   currentModel = null
   originalMaterials.clear()
 })
 
-// ---- Texture toggle (same logic as Scanner.vue) ----
+// ---- Texture toggle ----
 
-function applyMapToModel(tex) {
+function applyDormantLook() {
   if (!currentModel) return
   currentModel.traverse((child) => {
     if (child.isMesh) {
       const mats = Array.isArray(child.material) ? child.material : [child.material]
       mats.forEach((m) => {
-        m.map = tex
-        m.color.set(0xffffff)
+        m.map = null
+        m.color.set(0x888888)
         m.vertexColors = false
         m.needsUpdate = true
       })
@@ -290,7 +285,6 @@ function toggleTexture() {
   isTransitioning.value = true
 
   const toColor = !isColorMode.value
-  const texUrl = toColor ? stoneItem.value?.original_texture : null
   const duration = 800
   const start = performance.now()
   let swapped = false
@@ -302,7 +296,7 @@ function toggleTexture() {
     }
   })
 
-  let doSwap = () => restoreOriginalMaps()
+  let doSwap = () => (toColor ? restoreOriginalMaps() : applyDormantLook())
 
   function animateFade(now) {
     if (!currentModel) return
@@ -346,63 +340,29 @@ function toggleTexture() {
     }
   }
 
-  if (toColor && texUrl) {
-    new THREE.TextureLoader().load(
-      texUrl,
-      (tex) => {
-        tex.flipY = false
-        tex.colorSpace = THREE.SRGBColorSpace
-        tex.needsUpdate = true
-        doSwap = () => applyMapToModel(tex)
-        requestAnimationFrame(animateFade)
-      },
-      undefined,
-      (err) => {
-        console.error('Texture load error:', err)
-        isTransitioning.value = false
-      }
-    )
-  } else {
-    requestAnimationFrame(animateFade)
-  }
+  requestAnimationFrame(animateFade)
 }
 </script>
 
 <style scoped>
-.ar-page-container {
-  position: relative;
-  width: 100%;
-  height: calc(100dvh - 3.5rem);
-  min-height: calc(100dvh - 3.5rem);
-  overflow: hidden;
-  background: #000;
-}
-
-/* A-Frame embedded: fill the container, let it handle its own canvas */
-:deep(a-scene) {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
-}
-
-:deep(a-scene .a-canvas) {
-  position: absolute;
-  inset: 0;
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover;
-  z-index: 2;
-}
-
-/* HUD floats on top of A-Frame inside the container */
+/* HUD floats fixed on top of fullscreen A-Frame */
 .ar-hud {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 10;
   pointer-events: none;
+}
+
+.ar-hud-topbar {
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+.ar-hud-bottom {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
 }
 
 .slide-up-enter-active,
@@ -421,5 +381,25 @@ function toggleTexture() {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+</style>
+
+<!-- Unscoped: ensure A-Frame fullscreen height chain works -->
+<style>
+html.a-fullscreen,
+html.a-fullscreen body,
+html.a-fullscreen body > #app,
+html.a-fullscreen body > #app > *,
+html.a-fullscreen body > #app > * > a-scene {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+html.a-fullscreen body > #app > * > a-scene {
+  position: fixed !important;
+  inset: 0 !important;
 }
 </style>
