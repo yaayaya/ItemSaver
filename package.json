@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@google/model-viewer": "^4.0.0",
-    "aframe": "^1.7.1",
     "three": "^0.172.0",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0"

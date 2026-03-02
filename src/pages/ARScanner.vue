@@ -1,91 +1,98 @@
 <template>
   <div class="relative overflow-hidden" style="height: calc(100vh - 8rem);">
-    <!-- A-Frame AR Scene (encantar + aframe declarative approach) -->
+    <!-- MindAR + A-Frame Scene -->
     <a-scene
       v-if="!arError"
       ref="aSceneEl"
-      encantar="stats: false; gizmos: false"
-      loading-screen="enabled: false"
+      mindar-image="imageTargetSrc: /assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+      color-space="sRGB"
+      renderer="colorManagement: true"
       vr-mode-ui="enabled: false"
-      class="w-full h-full"
+      device-orientation-permission-ui="enabled: false"
+      loading-screen="enabled: false"
     >
-      <!-- Sources of data -->
-      <ar-sources>
-        <ar-camera-source resolution="lg" facing-mode="environment"></ar-camera-source>
-      </ar-sources>
+      <a-assets>
+        <a-asset-item id="stone-model" :src="stoneItem?.model_url || ''"></a-asset-item>
+      </a-assets>
 
-      <!-- Trackers -->
-      <ar-trackers>
-        <ar-image-tracker resolution="md">
-          <ar-reference-image name="stone" src="/assets/Stone_scanImage.png"></ar-reference-image>
-        </ar-image-tracker>
-      </ar-trackers>
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- AR Viewport with HUD -->
-      <ar-viewport resolution="lg">
-        <ar-hud>
-          <div ref="hudOverlay" class="ar-hud-overlay">
-            <!-- Top Bar -->
-            <div class="ar-hud-top">
-              <a href="/" class="ar-back-btn" @click.prevent="goHome">← 返回</a>
-              <div class="ar-status-badge">
-                <span v-if="!sessionReady" class="ar-status-loading">📷 啟動 AR 引擎中…</span>
-                <span v-else-if="tracking" class="ar-status-tracking">
-                  <span class="ar-pulse-dot"></span>
-                  追蹤中：{{ stoneItem?.name }}
-                </span>
-                <span v-else class="ar-status-idle">將石板對準畫面</span>
-              </div>
-            </div>
+      <!-- Target index 0 = the stone slab image in targets.mind -->
+      <a-entity ref="targetEntity" mindar-image-target="targetIndex: 0">
+        <a-light type="ambient" intensity="0.6"></a-light>
+        <a-light type="directional" intensity="1.2" position="5 10 7"></a-light>
+        <a-gltf-model
+          ref="modelEntity"
+          src="#stone-model"
+          scale="0.3 0.3 0.3"
+          position="0 0 0"
+        ></a-gltf-model>
+      </a-entity>
+    </a-scene>
 
-            <!-- Bottom Controls (visible when tracking) -->
-            <div v-if="tracking" class="ar-hud-bottom">
-              <div class="ar-hud-bottom-inner">
-                <div class="ar-item-info">
-                  <h3 class="ar-item-name">{{ stoneItem?.thumbnail }} {{ stoneItem?.name }}</h3>
-                  <p class="ar-item-status">
-                    材質：{{ isColorMode ? '🎨 已喚醒色彩' : '✨ 原始石材' }}
-                  </p>
-                </div>
+    <!-- Vue HUD overlay (on top of A-Frame) -->
+    <div v-if="!arError" class="absolute inset-0 pointer-events-none" style="z-index: 50;">
+      <!-- Top Bar -->
+      <div class="pointer-events-auto flex items-center justify-between p-4">
+        <router-link
+          to="/"
+          class="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm text-white text-sm hover:bg-black/70 transition-colors"
+        >
+          ← 返回
+        </router-link>
+        <div class="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm text-sm">
+          <span v-if="!sessionReady" class="text-yellow-400">📷 啟動 AR 引擎中…</span>
+          <span v-else-if="tracking" class="text-green-400 flex items-center gap-1">
+            <span class="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+            追蹤中：{{ stoneItem?.name }}
+          </span>
+          <span v-else class="text-slate-300">將石板對準畫面</span>
+        </div>
+      </div>
 
-                <button
-                  @click="toggleTexture"
-                  :disabled="isTransitioning"
-                  :class="['ar-toggle-btn', isColorMode ? 'ar-toggle-restore' : 'ar-toggle-awaken', isTransitioning ? 'ar-toggle-disabled' : '']"
-                >
-                  {{ isColorMode ? '🎨 回到原色' : '✨ 喚醒記憶' }}
-                </button>
-
-                <button @click="showStory = !showStory" class="ar-story-toggle">
-                  {{ showStory ? '▲ 收起故事' : '▼ 看這件物品的故事' }}
-                </button>
-                <p v-if="showStory" class="ar-story-text">
-                  {{ stoneItem?.story }}
-                </p>
-              </div>
+      <!-- Bottom Controls (visible when tracking) -->
+      <Transition name="slide-up">
+        <div
+          v-if="tracking"
+          class="pointer-events-auto absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 p-4"
+        >
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-white font-bold text-lg">{{ stoneItem?.thumbnail }} {{ stoneItem?.name }}</h3>
+              <p class="text-xs text-slate-400">
+                材質：{{ isColorMode ? '🎨 已喚醒色彩' : '✨ 原始石材' }}
+              </p>
             </div>
           </div>
-        </ar-hud>
-      </ar-viewport>
 
-      <!-- Virtual camera for AR -->
-      <ar-camera></ar-camera>
+          <button
+            @click="toggleTexture"
+            :disabled="isTransitioning"
+            :class="[
+              'w-full px-5 py-3 rounded-xl font-medium text-base transition-all duration-300',
+              isColorMode
+                ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25',
+              isTransitioning ? 'opacity-50 cursor-not-allowed' : ''
+            ]"
+          >
+            {{ isColorMode ? '🎨 回到原色' : '✨ 喚醒記憶' }}
+          </button>
 
-      <!-- Root node: this will be displayed when stone is tracked -->
-      <ar-root reference-image="stone">
-        <!-- Rotate from encantar coord (Z-up) to front view -->
-        <a-entity rotation="-90 0 0" position="0 -0.5 0">
-          <a-light type="ambient" intensity="0.6"></a-light>
-          <a-light type="directional" intensity="1.2" position="5 10 7"></a-light>
-          <a-entity
-            ref="modelEntity"
-            :gltf-model="stoneItem?.model_url || ''"
-            rotation="90 0 0"
-            scale="1 1 1"
-          ></a-entity>
-        </a-entity>
-      </ar-root>
-    </a-scene>
+          <button
+            @click="showStory = !showStory"
+            class="w-full mt-3 text-left text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            {{ showStory ? '▲ 收起故事' : '▼ 看這件物品的故事' }}
+          </button>
+          <Transition name="fade">
+            <p v-if="showStory" class="mt-2 text-sm text-slate-300 leading-relaxed bg-slate-800/50 p-3 rounded-lg">
+              {{ stoneItem?.story }}
+            </p>
+          </Transition>
+        </div>
+      </Transition>
+    </div>
 
     <!-- Error screen -->
     <div v-if="arError" class="absolute inset-0 z-30 flex items-center justify-center bg-slate-900">
@@ -107,14 +114,13 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as THREE from 'three'
-import { useRouter } from 'vue-router'
 import { useSiteData } from '../composables/useSiteData.js'
 
-const router = useRouter()
 const { items } = useSiteData()
 const stoneItem = ref(null)
 
 const aSceneEl = ref(null)
+const targetEntity = ref(null)
 const modelEntity = ref(null)
 
 const sessionReady = ref(false)
@@ -128,48 +134,56 @@ const isTransitioning = ref(false)
 let currentModel = null
 const originalMaterials = new Map()
 
-function goHome() {
-  router.push('/')
-}
-
 onMounted(async () => {
   stoneItem.value = items.value[0]
 
-  if (!window.AR) {
-    arError.value = '此設備不支援 AR 功能，請使用較新的瀏覽器。'
-    return
-  }
-
   await nextTick()
   const sceneEl = aSceneEl.value
-
   if (!sceneEl) return
 
-  // Wait for A-Frame scene to initialize
-  const onArReady = () => {
+  // Wait for A-Frame scene to be ready
+  const onSceneReady = () => {
     sessionReady.value = true
   }
-  sceneEl.addEventListener('arready', onArReady)
 
-  sceneEl.addEventListener('artargetfound', (e) => {
-    tracking.value = true
+  if (sceneEl.hasLoaded) {
+    onSceneReady()
+  } else {
+    sceneEl.addEventListener('loaded', onSceneReady)
+  }
+
+  // MindAR also emits arReady
+  sceneEl.addEventListener('arReady', () => {
+    sessionReady.value = true
   })
 
-  sceneEl.addEventListener('artargetlost', (e) => {
-    tracking.value = false
+  sceneEl.addEventListener('arError', () => {
+    arError.value = '相機啟動失敗，請允許相機權限後重試。'
   })
 
-  // When the model entity loads, grab the Three.js object for texture toggling
   await nextTick()
+
+  // Listen for target found/lost on the target entity
+  const tgtEl = targetEntity.value
+  if (tgtEl) {
+    tgtEl.addEventListener('targetFound', () => {
+      tracking.value = true
+    })
+    tgtEl.addEventListener('targetLost', () => {
+      tracking.value = false
+    })
+  }
+
+  // When the model loads, grab the Three.js object for texture toggling
   const modelEl = modelEntity.value
   if (modelEl) {
-    modelEl.addEventListener('model-loaded', (e) => {
-      const model = modelEl.getObject3D('mesh')
-      if (!model) return
-      currentModel = model
+    modelEl.addEventListener('model-loaded', () => {
+      const mesh = modelEl.getObject3D('mesh')
+      if (!mesh) return
+      currentModel = mesh
       originalMaterials.clear()
 
-      model.traverse((child) => {
+      mesh.traverse((child) => {
         if (child.isMesh) {
           const mats = Array.isArray(child.material) ? child.material : [child.material]
           originalMaterials.set(
@@ -187,10 +201,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  const sceneEl = aSceneEl.value
-  if (sceneEl && sceneEl.systems && sceneEl.systems.ar && sceneEl.systems.ar.session) {
-    try { sceneEl.systems.ar.session.end() } catch (e) { /* ignore */ }
-  }
   currentModel = null
   originalMaterials.clear()
 })
@@ -315,125 +325,21 @@ function toggleTexture() {
 </script>
 
 <style scoped>
-/* A-Frame scene takes full space */
-a-scene {
-  position: absolute !important;
-  inset: 0;
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform 0.4s ease, opacity 0.3s ease;
 }
-
-/* HUD overlay styles (not scoped by Tailwind since inside ar-hud) */
-.ar-hud-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  font-family: system-ui, -apple-system, sans-serif;
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
 }
-
-.ar-hud-top {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
 }
-
-.ar-back-btn {
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
-  color: white;
-  font-size: 0.875rem;
-  text-decoration: none;
-  transition: background 0.2s;
-}
-.ar-back-btn:hover { background: rgba(0, 0, 0, 0.7); }
-
-.ar-status-badge {
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
-  font-size: 0.875rem;
-}
-.ar-status-loading { color: #facc15; }
-.ar-status-tracking { color: #4ade80; display: flex; align-items: center; gap: 0.25rem; }
-.ar-status-idle { color: #cbd5e1; }
-
-.ar-pulse-dot {
-  display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: #4ade80;
-  animation: pulse 2s infinite;
-}
-
-.ar-hud-bottom {
-  pointer-events: auto;
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-}
-
-.ar-hud-bottom-inner {
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(51, 65, 85, 1);
-  padding: 1rem;
-}
-
-.ar-item-info { margin-bottom: 0.75rem; }
-.ar-item-name { color: white; font-weight: bold; font-size: 1.125rem; margin: 0; }
-.ar-item-status { color: #94a3b8; font-size: 0.75rem; margin: 0.25rem 0 0; }
-
-.ar-toggle-btn {
-  width: 100%;
-  padding: 0.75rem 1.25rem;
-  border-radius: 0.75rem;
-  border: none;
-  font-weight: 500;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-.ar-toggle-awaken {
-  background: #4f46e5;
-  color: white;
-  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25);
-}
-.ar-toggle-awaken:hover { background: #6366f1; }
-.ar-toggle-restore { background: #334155; color: white; }
-.ar-toggle-restore:hover { background: #475569; }
-.ar-toggle-disabled { opacity: 0.5; cursor: not-allowed; }
-
-.ar-story-toggle {
-  width: 100%;
-  margin-top: 0.75rem;
-  text-align: left;
-  font-size: 0.875rem;
-  color: #818cf8;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  transition: color 0.2s;
-}
-.ar-story-toggle:hover { color: #a5b4fc; }
-
-.ar-story-text {
-  margin-top: 0.5rem;
-  font-size: 0.875rem;
-  color: #cbd5e1;
-  line-height: 1.625;
-  background: rgba(30, 41, 59, 0.5);
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
