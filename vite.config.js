@@ -7,7 +7,7 @@ export default defineConfig({
     vue({
       template: {
         compilerOptions: {
-          isCustomElement: (tag) => tag === 'model-viewer' || tag.startsWith('a-')
+          isCustomElement: (tag) => tag === 'model-viewer' || tag.startsWith('a-') || tag.startsWith('ar-')
         }
       }
     }),
