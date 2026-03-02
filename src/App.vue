@@ -33,18 +33,23 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="flex-1">
+    <main :class="isARPage ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 min-h-0'">
       <router-view />
     </main>
 
     <!-- Footer -->
-    <footer class="border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+    <footer v-if="!isARPage" class="border-t border-slate-800 py-4 text-center text-xs text-slate-500">
       {{ site().footer || '萬物保存計畫 Prototype © 2026' }}
     </footer>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useSiteData } from './composables/useSiteData.js'
+
+const route = useRoute()
 const { site } = useSiteData()
+const isARPage = computed(() => route.path === '/ar')
 </script>

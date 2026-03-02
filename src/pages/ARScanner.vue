@@ -1,15 +1,16 @@
 <template>
-  <div class="relative overflow-hidden" style="height: calc(100vh - 8rem);">
-    <!-- MindAR + A-Frame Scene -->
+  <div ref="arContainerEl" class="ar-page-container">
+    <!-- MindAR + A-Frame Scene (embedded inside container) -->
     <a-scene
       v-if="!arError"
       ref="aSceneEl"
       mindar-image="imageTargetSrc: /assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
       color-space="sRGB"
-      renderer="colorManagement: true"
+      renderer="colorManagement: true; antialias: true; alpha: true"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
       loading-screen="enabled: false"
+      embedded
     >
       <a-assets>
         <a-asset-item id="stone-model" :src="stoneItem?.model_url || ''"></a-asset-item>
@@ -24,14 +25,13 @@
         <a-gltf-model
           ref="modelEntity"
           src="#stone-model"
-          scale="0.3 0.3 0.3"
           position="0 0 0"
         ></a-gltf-model>
       </a-entity>
     </a-scene>
 
-    <!-- Vue HUD overlay (on top of A-Frame) -->
-    <div v-if="!arError" class="absolute inset-0 pointer-events-none" style="z-index: 50;">
+    <!-- Vue HUD overlay -->
+    <div v-if="!arError" class="ar-hud">
       <!-- Top Bar -->
       <div class="pointer-events-auto flex items-center justify-between p-4">
         <router-link
@@ -119,6 +119,7 @@ import { useSiteData } from '../composables/useSiteData.js'
 const { items } = useSiteData()
 const stoneItem = ref(null)
 
+const arContainerEl = ref(null)
 const aSceneEl = ref(null)
 const targetEntity = ref(null)
 const modelEntity = ref(null)
@@ -133,13 +134,15 @@ const isTransitioning = ref(false)
 
 let currentModel = null
 const originalMaterials = new Map()
+let syncVideoTimer = null
 
 onMounted(async () => {
   stoneItem.value = items.value[0]
 
   await nextTick()
   const sceneEl = aSceneEl.value
-  if (!sceneEl) return
+  const containerEl = arContainerEl.value
+  if (!sceneEl || !containerEl) return
 
   // Wait for A-Frame scene to be ready
   const onSceneReady = () => {
@@ -153,15 +156,35 @@ onMounted(async () => {
   }
 
   // MindAR also emits arReady
+  const syncMindARVideo = () => {
+    const videoEl = containerEl.querySelector('video')
+    if (!videoEl) return false
+    videoEl.style.position = 'absolute'
+    videoEl.style.top = '0'
+    videoEl.style.left = '0'
+    videoEl.style.width = '100%'
+    videoEl.style.height = '100%'
+    videoEl.style.objectFit = 'cover'
+    videoEl.style.zIndex = '1'
+    return true
+  }
+
   sceneEl.addEventListener('arReady', () => {
     sessionReady.value = true
+    syncMindARVideo()
   })
 
   sceneEl.addEventListener('arError', () => {
     arError.value = '相機啟動失敗，請允許相機權限後重試。'
   })
-
   await nextTick()
+  syncMindARVideo()
+  syncVideoTimer = window.setInterval(() => {
+    if (syncMindARVideo() && syncVideoTimer) {
+      clearInterval(syncVideoTimer)
+      syncVideoTimer = null
+    }
+  }, 300)
 
   // Listen for target found/lost on the target entity
   const tgtEl = targetEntity.value
@@ -183,6 +206,20 @@ onMounted(async () => {
       currentModel = mesh
       originalMaterials.clear()
 
+      // Auto-scale: MindAR target width = 1 unit, fit model to match
+      const box = new THREE.Box3().setFromObject(mesh)
+      const size = box.getSize(new THREE.Vector3())
+      const maxDim = Math.max(size.x, size.y, size.z)
+      if (maxDim > 0) {
+        const targetSize = 0.5 // half the target width — looks proportional to real object
+        const s = targetSize / maxDim
+        modelEl.setAttribute('scale', `${s} ${s} ${s}`)
+
+        // Re-center the model above the image plane
+        const center = box.getCenter(new THREE.Vector3())
+        modelEl.setAttribute('position', `${-center.x * s} ${-center.y * s + size.y * s * 0.5} ${-center.z * s}`)
+      }
+
       mesh.traverse((child) => {
         if (child.isMesh) {
           const mats = Array.isArray(child.material) ? child.material : [child.material]
@@ -201,6 +238,13 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (syncVideoTimer) clearInterval(syncVideoTimer)
+  // Stop MindAR camera cleanly
+  const scene = aSceneEl.value
+  if (scene) {
+    const arSystem = scene.systems?.['mindar-image-system']
+    if (arSystem && arSystem.stop) arSystem.stop()
+  }
   currentModel = null
   originalMaterials.clear()
 })
@@ -325,6 +369,42 @@ function toggleTexture() {
 </script>
 
 <style scoped>
+.ar-page-container {
+  position: relative;
+  width: 100%;
+  height: calc(100dvh - 3.5rem);
+  min-height: calc(100dvh - 3.5rem);
+  overflow: hidden;
+  background: #000;
+}
+
+/* A-Frame embedded: fill the container, let it handle its own canvas */
+:deep(a-scene) {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+:deep(a-scene .a-canvas) {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  z-index: 2;
+}
+
+/* HUD floats on top of A-Frame inside the container */
+.ar-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
 .slide-up-enter-active,
 .slide-up-leave-active {
   transition: transform 0.4s ease, opacity 0.3s ease;

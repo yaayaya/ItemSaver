@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] px-4 text-center">
+  <div class="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] pt-6 px-4 text-center">
     <!-- Hero -->
     <div class="mb-8">
       <h1 class="text-4xl md:text-5xl font-bold mb-4">
@@ -46,12 +46,6 @@
       </router-link>
     </div>
 
-    <!-- Tech Badge -->
-    <div class="mt-12 flex gap-3 text-xs text-slate-600">
-      <span class="px-2 py-1 rounded bg-slate-800/50">Vue 3</span>
-      <span class="px-2 py-1 rounded bg-slate-800/50">Three.js</span>
-      <span class="px-2 py-1 rounded bg-slate-800/50">model-viewer</span>
-    </div>
   </div>
 </template>
 
