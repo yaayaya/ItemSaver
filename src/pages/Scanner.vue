@@ -3,23 +3,6 @@
     <h1 class="text-3xl font-bold mb-2">🔍 {{ p.heading }}</h1>
     <p class="text-slate-400 mb-6">{{ p.description }}</p>
 
-    <!-- Item Selector -->
-    <div class="flex gap-3 mb-6">
-      <button
-        v-for="item in items"
-        :key="item.id"
-        @click="selectItem(item)"
-        :class="[
-          'px-4 py-2 rounded-lg text-sm transition-all duration-200',
-          selectedItem?.id === item.id
-            ? 'bg-indigo-600 text-white'
-            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-        ]"
-      >
-        {{ item.thumbnail }} {{ item.name }}
-      </button>
-    </div>
-
     <!-- 3D Viewport -->
     <div class="relative rounded-2xl overflow-hidden border border-slate-700 bg-slate-900">
       <div ref="canvasContainer" class="w-full h-[500px]"></div>
@@ -80,7 +63,7 @@ const p = computed(() => page('scanner'))
 const canvasContainer = ref(null)
 const selectedItem = ref(null)
 const loading = ref(false)
-const isColorMode = ref(false) // Default: stone mode
+const isColorMode = ref(false) // false = grayscale/default, true = color-awakened
 const isTransitioning = ref(false)
 
 const scene = shallowRef(null)
@@ -90,12 +73,7 @@ const controls = shallowRef(null)
 const currentModel = shallowRef(null)
 let animationId = null
 
-const stoneMaterial = new THREE.MeshStandardMaterial({
-  color: 0x8a8a8a,
-  roughness: 0.9,
-  metalness: 0.1
-})
-
+// Stores per-mesh original material state for texture toggle
 const originalMaterials = new Map()
 
 function initScene() {
@@ -114,13 +92,15 @@ function initScene() {
   r.setSize(container.clientWidth, container.clientHeight)
   r.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   r.toneMapping = THREE.ACESFilmicToneMapping
-  r.toneMappingExposure = 1.2
+  r.toneMappingExposure = 1.0
   container.appendChild(r.domElement)
   renderer.value = r
 
   const ctrl = new OrbitControls(c, r.domElement)
   ctrl.enableDamping = true
   ctrl.dampingFactor = 0.05
+  ctrl.minAzimuthAngle = -85 * Math.PI / 180
+  ctrl.maxAzimuthAngle = 85 * Math.PI / 180
   ctrl.target.set(0, 0.8, 0)
   ctrl.update()
   controls.value = ctrl
@@ -163,7 +143,7 @@ function loadModel(item) {
   if (!scene.value) return
 
   loading.value = true
-  isColorMode.value = false // Always start as stone
+  isColorMode.value = false
   originalMaterials.clear()
 
   if (currentModel.value) {
@@ -187,11 +167,15 @@ function loadModel(item) {
       model.position.sub(center.multiplyScalar(scale))
       model.position.y += size.y * scale * 0.5
 
-      // Store originals then apply stone
+      // Backup original material properties per mesh
       model.traverse((child) => {
         if (child.isMesh) {
-          originalMaterials.set(child.uuid, child.material.clone())
-          child.material = stoneMaterial.clone()
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          originalMaterials.set(child.uuid, mats.map(m => ({
+            map: m.map || null,
+            color: m.color ? m.color.clone() : null,
+            vertexColors: m.vertexColors
+          })))
         }
       })
 
@@ -207,70 +191,102 @@ function loadModel(item) {
   )
 }
 
+// Apply a loaded texture to all meshes (UV-based)
+function applyMapToModel(tex) {
+  if (!currentModel.value) return
+  currentModel.value.traverse((child) => {
+    if (child.isMesh) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach(m => {
+        m.map = tex
+        m.color.set(0xffffff)   // white base so texture isn't tinted
+        m.vertexColors = false  // disable vertex colors so UV map is visible
+        m.needsUpdate = true
+      })
+    }
+  })
+}
+
+// Restore original material state
+function restoreOriginalMaps() {
+  if (!currentModel.value) return
+  currentModel.value.traverse((child) => {
+    if (child.isMesh) {
+      const origData = originalMaterials.get(child.uuid) || []
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach((m, i) => {
+        const orig = origData[i]
+        if (orig) {
+          m.map = orig.map
+          if (orig.color) m.color.copy(orig.color)
+          m.vertexColors = orig.vertexColors
+        }
+        m.needsUpdate = true
+      })
+    }
+  })
+}
+
 function toggleTexture() {
   if (!currentModel.value || isTransitioning.value) return
   isTransitioning.value = true
 
   const toColor = !isColorMode.value
+  const texUrl = toColor ? selectedItem.value?.original_texture : null
+
   const duration = 800
   const start = performance.now()
+  let swapped = false
 
-  // Prepare target materials
-  const targetMaterials = new Map()
   currentModel.value.traverse((child) => {
     if (child.isMesh) {
-      if (toColor) {
-        const orig = originalMaterials.get(child.uuid)
-        if (orig) targetMaterials.set(child.uuid, orig.clone())
-      } else {
-        targetMaterials.set(child.uuid, stoneMaterial.clone())
-      }
-      // Ensure opacity is settable
-      child.material.transparent = true
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach(m => { m.transparent = true })
     }
   })
 
-  function animateTransition(now) {
+  function doSwap() {
+    if (toColor && texUrl) {
+      // Already loaded before fade started — see below
+    } else {
+      restoreOriginalMaps()
+    }
+  }
+
+  function animate(now) {
     const elapsed = now - start
     const progress = Math.min(elapsed / duration, 1)
-    // Smooth ease-in-out
     const ease = progress < 0.5
       ? 2 * progress * progress
       : 1 - Math.pow(-2 * progress + 2, 2) / 2
 
     if (progress < 0.5) {
-      // Fade out current
       currentModel.value.traverse((child) => {
-        if (child.isMesh) child.material.opacity = 1 - ease * 2
+        if (child.isMesh) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          mats.forEach(m => { m.opacity = 1 - ease * 2 })
+        }
       })
     } else {
-      // Swap materials at midpoint
-      if (progress >= 0.5 && elapsed < duration) {
-        currentModel.value.traverse((child) => {
-          if (child.isMesh) {
-            const target = targetMaterials.get(child.uuid)
-            if (target) {
-              child.material = target
-              child.material.transparent = true
-              child.material.opacity = 0
-            }
-          }
-        })
+      if (!swapped) {
+        swapped = true
+        doSwap()
       }
-      // Fade in new
       currentModel.value.traverse((child) => {
-        if (child.isMesh) child.material.opacity = (ease - 0.5) * 2
+        if (child.isMesh) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          mats.forEach(m => { m.opacity = (ease - 0.5) * 2 })
+        }
       })
     }
 
     if (progress < 1) {
-      requestAnimationFrame(animateTransition)
+      requestAnimationFrame(animate)
     } else {
-      // Finalize
       currentModel.value.traverse((child) => {
         if (child.isMesh) {
-          child.material.opacity = 1
-          child.material.transparent = false
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          mats.forEach(m => { m.opacity = 1; m.transparent = false })
         }
       })
       isColorMode.value = toColor
@@ -278,7 +294,27 @@ function toggleTexture() {
     }
   }
 
-  requestAnimationFrame(animateTransition)
+  if (toColor && texUrl) {
+    // Pre-load texture, then start fade
+    new THREE.TextureLoader().load(
+      texUrl,
+      (tex) => {
+        tex.flipY = false                       // GLTF UV origin is bottom-left
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.needsUpdate = true
+        // Override doSwap to apply the loaded texture at midpoint
+        doSwap = () => applyMapToModel(tex)
+        requestAnimationFrame(animate)
+      },
+      undefined,
+      (err) => {
+        console.error('Texture load error:', err)
+        isTransitioning.value = false
+      }
+    )
+  } else {
+    requestAnimationFrame(animate)
+  }
 }
 
 function selectItem(item) {
@@ -288,9 +324,11 @@ function selectItem(item) {
 
 onMounted(() => {
   initScene()
-  if (items.value.length > 0) {
-    selectedItem.value = items.value[0]
-    loadModel(items.value[0])
+  // Only load stone (first item)
+  const stone = items.value[0]
+  if (stone) {
+    selectedItem.value = stone
+    loadModel(stone)
   }
 })
 

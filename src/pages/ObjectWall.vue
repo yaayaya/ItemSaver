@@ -16,12 +16,13 @@
           <model-viewer
             :src="item.model_url"
             :alt="item.name"
-            auto-rotate
-            rotation-per-second="30deg"
             interaction-prompt="none"
             shadow-intensity="0.5"
             environment-image="neutral"
+            exposure="0.8"
             camera-orbit="0deg 65deg 105%"
+            min-camera-orbit="-80deg auto auto"
+            max-camera-orbit="80deg auto auto"
             disable-zoom
             style="width: 100%; height: 100%; pointer-events: none;"
           ></model-viewer>
@@ -71,9 +72,11 @@
               :src="activeItem.model_url"
               :alt="activeItem.name"
               camera-controls
-              auto-rotate
               shadow-intensity="1"
               environment-image="neutral"
+              exposure="0.8"
+              min-camera-orbit="-80deg auto auto"
+              max-camera-orbit="80deg auto auto"
               style="width: 100%; height: 100%;"
             ></model-viewer>
 
@@ -157,6 +160,8 @@ function resetZoom() {
   if (viewerEl.value) {
     viewerEl.value.fieldOfView = '45deg'
     viewerEl.value.cameraOrbit = '0deg 75deg 105%'
+    viewerEl.value.minCameraOrbit = '-80deg auto auto'
+    viewerEl.value.maxCameraOrbit = '80deg auto auto'
   }
 }
 </script>

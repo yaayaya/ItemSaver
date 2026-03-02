@@ -10,6 +10,7 @@
       ar
       shadow-intensity="1"
       environment-image="neutral"
+      exposure="0.45"
       style="width: 100%; height: 100%;"
     >
       <button

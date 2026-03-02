@@ -1,22 +1,12 @@
 <template>
-  <div class="relative min-h-[calc(100vh-8rem)]">
-    <!-- Camera View (Full screen background) -->
-    <div class="absolute inset-0 bg-black">
-      <video
-        ref="videoEl"
-        autoplay
-        playsinline
-        muted
-        class="w-full h-full object-cover"
-      ></video>
+  <div class="relative overflow-hidden" style="height: calc(100vh - 8rem);">
+    <!-- Encantar AR Viewport (encantar manages camera + background) -->
+    <div ref="arViewportEl" class="w-full h-full relative"></div>
 
-      <!-- Three.js AR overlay -->
-      <div ref="arOverlay" class="absolute inset-0 pointer-events-none"></div>
-    </div>
-
-    <!-- Top Bar -->
-    <div class="relative z-10 p-4">
-      <div class="flex items-center justify-between">
+    <!-- HUD overlay for Vue UI -->
+    <div ref="arHudEl" class="absolute inset-0 pointer-events-none" style="z-index: 10;" hidden>
+      <!-- Top Bar -->
+      <div class="pointer-events-auto flex items-center justify-between p-4">
         <router-link
           to="/"
           class="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm text-white text-sm hover:bg-black/70 transition-colors"
@@ -24,422 +14,463 @@
           ← 返回
         </router-link>
         <div class="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm text-sm">
-          <span v-if="!cameraReady" class="text-yellow-400">{{ p.cameraLoading }}</span>
-          <span v-else-if="detectedItem" class="text-green-400">✅ 偵測到：{{ detectedItem.name }}</span>
-          <span v-else class="text-slate-300">{{ p.scanning }}</span>
+          <span v-if="!sessionReady" class="text-yellow-400">📷 啟動 AR 引擎中…</span>
+          <span v-else-if="tracking" class="text-green-400 flex items-center gap-1">
+            <span class="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+            追蹤中：{{ stoneItem?.name }}
+          </span>
+          <span v-else class="text-slate-300">將石板對準畫面</span>
         </div>
       </div>
-    </div>
 
-    <!-- Scan Frame Guide -->
-    <div v-if="cameraReady && !detectedItem" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-      <div class="w-64 h-64 border-2 border-dashed border-indigo-400/60 rounded-2xl flex items-center justify-center">
-        <p class="text-indigo-300/80 text-sm text-center px-4 whitespace-pre-line">
-          {{ p.scanGuide }}
-        </p>
-      </div>
-    </div>
-
-    <!-- Detection Simulation Buttons (for demo) -->
-    <div v-if="cameraReady && !detectedItem" class="absolute bottom-24 left-0 right-0 z-20 px-4">
-      <p class="text-center text-xs text-slate-400 mb-3">{{ p.demoHint }}</p>
-      <div class="flex gap-3 justify-center">
-        <button
-          v-for="item in mockItems"
-          :key="item.id"
-          @click="simulateDetection(item)"
-          class="px-5 py-3 rounded-xl bg-indigo-600/80 backdrop-blur-sm hover:bg-indigo-500 text-white font-medium transition-colors"
+      <!-- Bottom Controls (visible when tracking) -->
+      <Transition name="slide-up">
+        <div
+          v-if="tracking"
+          class="pointer-events-auto absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 p-4"
         >
-          {{ item.thumbnail }} 偵測 {{ item.name }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Detected Model Panel -->
-    <Transition name="slide-up">
-      <div v-if="detectedItem" class="absolute bottom-0 left-0 right-0 z-20">
-        <!-- 3D Model Display (AR overlay scene) -->
-        <div ref="modelContainer" class="w-full h-[350px] pointer-events-auto"></div>
-
-        <!-- Control Bar -->
-        <div class="bg-slate-900/95 backdrop-blur-md border-t border-slate-700 p-4 pointer-events-auto">
           <div class="flex items-center justify-between mb-3">
             <div>
-              <h3 class="text-white font-bold text-lg">{{ detectedItem.thumbnail }} {{ detectedItem.name }}</h3>
+              <h3 class="text-white font-bold text-lg">{{ stoneItem?.thumbnail }} {{ stoneItem?.name }}</h3>
               <p class="text-xs text-slate-400">
-                材質：{{ isColorMode ? p.colorStatus : p.stoneStatus }}
+                材質：{{ isColorMode ? '🎨 已喚醒色彩' : '✨ 原始石材' }}
               </p>
             </div>
-            <button
-              @click="dismissDetection"
-              class="w-10 h-10 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-white transition-colors"
-            >
-              ✕
-            </button>
           </div>
 
-          <div class="flex gap-3">
-            <!-- Toggle Texture Button -->
-            <button
-              @click="toggleTexture"
-              :class="[
-                'flex-1 px-5 py-3 rounded-xl font-medium text-base transition-all duration-300',
-                isColorMode
-                  ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25'
-              ]"
-            >
-              {{ isColorMode ? p.stoneButton : p.colorButton }}
-            </button>
+          <button
+            @click="toggleTexture"
+            :disabled="isTransitioning"
+            :class="[
+              'w-full px-5 py-3 rounded-xl font-medium text-base transition-all duration-300',
+              isColorMode
+                ? 'bg-slate-700 hover:bg-slate-600 text-white'
+                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25',
+              isTransitioning ? 'opacity-50 cursor-not-allowed' : ''
+            ]"
+          >
+            {{ isColorMode ? '🎨 回到原色' : '✨ 喚醒記憶' }}
+          </button>
 
-            <!-- AR View Button -->
-            <button
-              @click="enterARView"
-              class="px-5 py-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-medium text-base transition-colors"
-            >
-              {{ p.arButton }}
-            </button>
-          </div>
-
-          <!-- Story (collapsible) -->
           <button
             @click="showStory = !showStory"
             class="w-full mt-3 text-left text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
           >
-            {{ showStory ? p.storyToggleHide : p.storyToggleShow }}
+            {{ showStory ? '▲ 收起故事' : '▼ 看這件物品的故事' }}
           </button>
           <Transition name="fade">
             <p v-if="showStory" class="mt-2 text-sm text-slate-300 leading-relaxed bg-slate-800/50 p-3 rounded-lg">
-              {{ detectedItem.story }}
+              {{ stoneItem?.story }}
             </p>
           </Transition>
         </div>
-      </div>
-    </Transition>
-
-    <!-- AR model-viewer (hidden, activated by AR button) -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div
-          v-if="showARViewer"
-          class="fixed inset-0 z-[200] bg-black flex flex-col"
-        >
-          <div class="flex items-center justify-between p-4 bg-slate-900/90">
-            <h3 class="text-white font-bold">{{ detectedItem?.name }} - AR 實景</h3>
-            <button
-              @click="showARViewer = false"
-              class="w-10 h-10 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-white"
-            >
-              ✕
-            </button>
-          </div>
-          <div class="flex-1 relative">
-            <model-viewer
-              v-if="detectedItem"
-              :src="detectedItem.model_url"
-              :alt="detectedItem.name"
-              ar
-              ar-modes="webxr scene-viewer quick-look"
-              camera-controls
-              auto-rotate
-              shadow-intensity="1"
-              environment-image="neutral"
-              style="width: 100%; height: 100%;"
-            >
-              <button
-                slot="ar-button"
-                class="absolute bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 bg-green-600 text-white rounded-full font-medium text-lg hover:bg-green-500 transition-colors shadow-xl"
-              >
-                🔮 放置到現實世界
-              </button>
-            </model-viewer>
-          </div>
-
-          <!-- AR Texture Toggle -->
-          <div class="p-4 bg-slate-900/90 border-t border-slate-700">
-            <button
-              @click="toggleTexture"
-              :class="[
-                'w-full px-5 py-3 rounded-xl font-medium text-base transition-all duration-300',
-                isColorMode
-                  ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                  : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-              ]"
-            >
-              {{ isColorMode ? p.stoneButton : p.colorButton }}
-            </button>
-          </div>
-        </div>
       </Transition>
-    </Teleport>
+    </div>
 
-    <!-- Camera Error -->
-    <div v-if="cameraError" class="absolute inset-0 z-30 flex items-center justify-center bg-slate-900">
+    <!-- Hidden reference image for Encantar image tracker -->
+    <img
+      ref="refImageEl"
+      src="/assets/Stone_scanImage.png"
+      crossorigin="anonymous"
+      hidden
+    />
+
+    <!-- Error screen -->
+    <div v-if="arError" class="absolute inset-0 z-30 flex items-center justify-center bg-slate-900">
       <div class="text-center p-8">
         <div class="text-5xl mb-4">📷</div>
-        <h2 class="text-xl font-bold text-white mb-2">{{ p.cameraError?.title }}</h2>
-        <p class="text-slate-400 mb-4">{{ p.cameraError?.message }}</p>
-        <button
-          @click="initCamera"
-          class="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
+        <h2 class="text-xl font-bold text-white mb-2">AR 功能無法啟動</h2>
+        <p class="text-slate-400 mb-4">{{ arError }}</p>
+        <router-link
+          to="/"
+          class="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors inline-block"
         >
-          {{ p.cameraError?.retry || '重試' }}
-        </button>
+          返回首頁
+        </router-link>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import '@google/model-viewer'
-import { ref, computed, onMounted, onBeforeUnmount, shallowRef, nextTick, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { useSiteData } from '../composables/useSiteData.js'
 
-const { items, page } = useSiteData()
-const p = computed(() => page('ar'))
-const mockItems = computed(() => items.value)
+// ---- Reactive state ----
+const { items } = useSiteData()
+const stoneItem = ref(null)
 
-// Camera state
-const videoEl = ref(null)
-const cameraReady = ref(false)
-const cameraError = ref(false)
-let mediaStream = null
+const arViewportEl = ref(null)
+const arHudEl = ref(null)
+const refImageEl = ref(null)
 
-// Detection state
-const detectedItem = ref(null)
+const sessionReady = ref(false)
+const tracking = ref(false)
+const arError = ref(null)
 const showStory = ref(false)
-const showARViewer = ref(false)
 
-// Three.js scene state
-const modelContainer = ref(null)
-const isColorMode = ref(false) // Start as stone (not yet "awakened")
+const isColorMode = ref(false)
 const isTransitioning = ref(false)
 
-const scene = shallowRef(null)
-const camera = shallowRef(null)
-const renderer = shallowRef(null)
-const controls = shallowRef(null)
-const currentModel = shallowRef(null)
-let animationId = null
+// ---- Non-reactive Three.js / Encantar state ----
+let arSession = null
+let threeScene = null
+let threeCamera = null
+let threeRenderer = null
+let threeOrigin = null // THREE.Group aligned to tracked image
+let currentModel = null
 const originalMaterials = new Map()
+const tmpMat = new THREE.Matrix4()
 
-const stoneMaterial = new THREE.MeshStandardMaterial({
-  color: 0x8a8a8a,
-  roughness: 0.9,
-  metalness: 0.1
+// ---- Lifecycle ----
+
+onMounted(async () => {
+  stoneItem.value = items.value[0] // stone slab
+
+  const AR = window.AR
+  if (!AR || !AR.isSupported()) {
+    arError.value = '此設備不支援 AR 功能，請使用較新的瀏覽器。'
+    return
+  }
+
+  try {
+    // Wait for reference image to load
+    await waitForImage(refImageEl.value)
+
+    // Create image tracker
+    const tracker = AR.Tracker.Image({ resolution: 'md' })
+    await tracker.database.add([
+      {
+        name: 'stone',
+        image: refImageEl.value
+      }
+    ])
+
+    // Create viewport (encantar manages the camera feed canvas)
+    const viewport = AR.Viewport({
+      container: arViewportEl.value,
+      hudContainer: arHudEl.value
+    })
+
+    // Create camera source (rear camera)
+    const source = AR.Source.Camera({
+      resolution: 'lg',
+      constraints: { facingMode: 'environment' }
+    })
+
+    // Start AR session
+    arSession = await AR.startSession({
+      mode: 'immersive',
+      viewport: viewport,
+      trackers: [tracker],
+      sources: [source]
+    })
+
+    // Listen for tracking events
+    tracker.addEventListener('targetfound', (event) => {
+      tracking.value = true
+    })
+
+    tracker.addEventListener('targetlost', (event) => {
+      tracking.value = false
+    })
+
+    // Setup Three.js with the viewport canvas
+    setupThreeJS(arSession.viewport.canvas)
+
+    // Load the stone 3D model
+    loadModel(stoneItem.value)
+
+    // Resize handler
+    arSession.viewport.addEventListener('resize', () => {
+      const size = arSession.viewport.virtualSize
+      threeRenderer.setPixelRatio(1.0)
+      threeRenderer.setSize(size.width, size.height, false)
+    })
+
+    sessionReady.value = true
+
+    // Start animation loop
+    arSession.requestAnimationFrame(animate)
+  } catch (err) {
+    console.error('AR initialization error:', err)
+    arError.value = err.message || '相機啟動失敗，請允許相機權限後重試。'
+  }
 })
 
-// Camera initialization
-async function initCamera() {
-  cameraError.value = false
-  try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-    })
-    if (videoEl.value) {
-      videoEl.value.srcObject = mediaStream
-      cameraReady.value = true
+onBeforeUnmount(() => {
+  if (arSession) {
+    try { arSession.end() } catch (e) { /* ignore */ }
+    arSession = null
+  }
+  if (threeRenderer) {
+    threeRenderer.dispose()
+    threeRenderer = null
+  }
+  threeScene = null
+  threeCamera = null
+  threeOrigin = null
+  currentModel = null
+  originalMaterials.clear()
+})
+
+// ---- Helpers ----
+
+function waitForImage(img) {
+  return new Promise((resolve, reject) => {
+    if (img.complete && img.naturalWidth > 0) {
+      resolve()
+    } else {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('Reference image failed to load'))
     }
-  } catch (err) {
-    console.error('Camera error:', err)
-    cameraError.value = true
+  })
+}
+
+// ---- Three.js setup ----
+
+function setupThreeJS(canvas) {
+  threeScene = new THREE.Scene()
+
+  threeRenderer = new THREE.WebGLRenderer({
+    canvas: canvas,
+    alpha: true
+  })
+  threeRenderer.outputColorSpace = THREE.SRGBColorSpace
+  threeRenderer.toneMapping = THREE.ACESFilmicToneMapping
+  threeRenderer.toneMappingExposure = 1.0
+
+  const size = arSession.viewport.virtualSize
+  threeRenderer.setPixelRatio(1.0)
+  threeRenderer.setSize(size.width, size.height, false)
+
+  // Camera is controlled by encantar tracking matrices
+  threeCamera = new THREE.PerspectiveCamera()
+  threeScene.add(threeCamera)
+
+  // Origin group: automatically positioned on the tracked image
+  threeOrigin = new THREE.Group()
+  threeOrigin.visible = false
+  threeScene.add(threeOrigin)
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+  threeScene.add(ambientLight)
+
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2)
+  dirLight.position.set(5, 10, 7)
+  threeScene.add(dirLight)
+}
+
+// ---- Animation loop ----
+
+function animate(time, frame) {
+  if (!arSession || !threeRenderer) return
+
+  // Mix: apply tracking matrices to Three.js
+  mixFrame(frame)
+
+  // Render
+  threeRenderer.render(threeScene, threeCamera)
+
+  // Continue
+  arSession.requestAnimationFrame(animate)
+}
+
+function mixFrame(frame) {
+  let found = false
+  threeOrigin.visible = false
+
+  for (const result of frame.results) {
+    if (result.tracker.type === 'image-tracker') {
+      if (result.trackables.length > 0) {
+        const trackable = result.trackables[0]
+        const projectionMatrix = result.viewer.view.projectionMatrix
+        const viewMatrixInverse = result.viewer.pose.transform.matrix
+        const modelMatrix = trackable.pose.transform.matrix
+
+        // Apply projection matrix to Three.js camera
+        threeCamera.projectionMatrix.fromArray(projectionMatrix.read())
+        threeCamera.projectionMatrixInverse.copy(threeCamera.projectionMatrix).invert()
+
+        // Apply view matrix (camera position)
+        tmpMat.fromArray(viewMatrixInverse.read())
+        tmpMat.decompose(threeCamera.position, threeCamera.quaternion, threeCamera.scale)
+
+        // Apply model matrix (tracked image position)
+        tmpMat.fromArray(modelMatrix.read())
+        tmpMat.decompose(threeOrigin.position, threeOrigin.quaternion, threeOrigin.scale)
+
+        threeOrigin.visible = true
+        found = true
+      }
+    }
   }
+
+  return found
 }
 
-function stopCamera() {
-  if (mediaStream) {
-    mediaStream.getTracks().forEach(t => t.stop())
-    mediaStream = null
-  }
-}
-
-// Simulate marker detection (DEMO)
-function simulateDetection(item) {
-  detectedItem.value = item
-  isColorMode.value = false
-  showStory.value = false
-  nextTick(() => initThreeScene(item))
-}
-
-function dismissDetection() {
-  detectedItem.value = null
-  showStory.value = false
-  showARViewer.value = false
-  cleanupThreeScene()
-}
-
-// Three.js scene for detected model
-function initThreeScene(item) {
-  const container = modelContainer.value
-  if (!container) return
-
-  cleanupThreeScene()
-
-  const s = new THREE.Scene()
-  s.background = new THREE.Color(0x111827)
-  scene.value = s
-
-  const c = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000)
-  c.position.set(0, 1.5, 3)
-  camera.value = c
-
-  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-  r.setSize(container.clientWidth, container.clientHeight)
-  r.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  r.toneMapping = THREE.ACESFilmicToneMapping
-  r.toneMappingExposure = 1.2
-  container.appendChild(r.domElement)
-  renderer.value = r
-
-  const ctrl = new OrbitControls(c, r.domElement)
-  ctrl.enableDamping = true
-  ctrl.dampingFactor = 0.05
-  ctrl.target.set(0, 0.8, 0)
-  ctrl.update()
-  controls.value = ctrl
-
-  s.add(new THREE.AmbientLight(0xffffff, 0.6))
-  const dir = new THREE.DirectionalLight(0xffffff, 1.2)
-  dir.position.set(5, 10, 7)
-  s.add(dir)
-  const fill = new THREE.DirectionalLight(0x6366f1, 0.3)
-  fill.position.set(-5, 3, -5)
-  s.add(fill)
-
-  // Ground
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(10, 10),
-    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 1 })
-  )
-  ground.rotation.x = -Math.PI / 2
-  s.add(ground)
-
-  function animate() {
-    animationId = requestAnimationFrame(animate)
-    ctrl.update()
-    r.render(s, c)
-  }
-  animate()
-
-  loadModel(item)
-}
+// ---- Model loading ----
 
 function loadModel(item) {
-  if (!scene.value) return
+  if (!item || !threeOrigin) return
   originalMaterials.clear()
 
-  if (currentModel.value) {
-    scene.value.remove(currentModel.value)
-    currentModel.value = null
-  }
+  new GLTFLoader().load(
+    item.model_url,
+    (gltf) => {
+      const model = gltf.scene
 
-  const loader = new GLTFLoader()
-  loader.load(item.model_url, (gltf) => {
-    const model = gltf.scene
+      // encantar uses XY as the ground plane (tracked image), Z up
+      // glTF has Y-up, so rotate to match encantar's coordinate system
+      model.rotateX(Math.PI / 2)
 
-    const box = new THREE.Box3().setFromObject(model)
-    const size = box.getSize(new THREE.Vector3())
-    const maxDim = Math.max(size.x, size.y, size.z)
-    const scale = 2 / maxDim
-    model.scale.setScalar(scale)
+      // Scale model to fit on the tracked image
+      const box = new THREE.Box3().setFromObject(model)
+      const size = box.getSize(new THREE.Vector3())
+      const maxDim = Math.max(size.x, size.y, size.z)
+      const targetScale = 1.2
+      model.scale.multiplyScalar(targetScale / maxDim)
 
-    const center = box.getCenter(new THREE.Vector3())
-    model.position.sub(center.multiplyScalar(scale))
-    model.position.y += size.y * scale * 0.5
+      // Center the model
+      const center = box.getCenter(new THREE.Vector3())
+      model.position.sub(center.multiplyScalar(targetScale / maxDim))
 
-    model.traverse((child) => {
-      if (child.isMesh) {
-        originalMaterials.set(child.uuid, child.material.clone())
-      }
-    })
+      // Lift slightly above the image plane
+      model.position.z += 0.2
 
-    scene.value.add(model)
-    currentModel.value = model
+      // Store original materials for texture toggle
+      model.traverse((child) => {
+        if (child.isMesh) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          originalMaterials.set(
+            child.uuid,
+            mats.map((m) => ({
+              map: m.map || null,
+              color: m.color ? m.color.clone() : null,
+              vertexColors: m.vertexColors
+            }))
+          )
+        }
+      })
 
-    // Default to stone mode
-    applyStoneTexture()
-  })
+      threeOrigin.add(model)
+      currentModel = model
+    },
+    undefined,
+    (err) => {
+      console.error('Model load error:', err)
+    }
+  )
 }
 
-function applyStoneTexture() {
-  if (!currentModel.value) return
-  currentModel.value.traverse((child) => {
-    if (child.isMesh) child.material = stoneMaterial.clone()
-  })
-}
+// ---- Texture toggle (same logic as Scanner.vue) ----
 
-function applyColorTexture() {
-  if (!currentModel.value) return
-  currentModel.value.traverse((child) => {
+function applyMapToModel(tex) {
+  if (!currentModel) return
+  currentModel.traverse((child) => {
     if (child.isMesh) {
-      const orig = originalMaterials.get(child.uuid)
-      if (orig) child.material = orig.clone()
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach((m) => {
+        m.map = tex
+        m.color.set(0xffffff)
+        m.vertexColors = false
+        m.needsUpdate = true
+      })
+    }
+  })
+}
+
+function restoreOriginalMaps() {
+  if (!currentModel) return
+  currentModel.traverse((child) => {
+    if (child.isMesh) {
+      const origData = originalMaterials.get(child.uuid) || []
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach((m, i) => {
+        const orig = origData[i]
+        if (orig) {
+          m.map = orig.map
+          if (orig.color) m.color.copy(orig.color)
+          m.vertexColors = orig.vertexColors
+        }
+        m.needsUpdate = true
+      })
     }
   })
 }
 
 function toggleTexture() {
-  if (!currentModel.value || isTransitioning.value) return
+  if (!currentModel || isTransitioning.value) return
   isTransitioning.value = true
 
   const toColor = !isColorMode.value
+  const texUrl = toColor ? stoneItem.value?.original_texture : null
   const duration = 800
   const start = performance.now()
+  let swapped = false
 
-  const targetMaterials = new Map()
-  currentModel.value.traverse((child) => {
+  // Enable transparency for fade
+  currentModel.traverse((child) => {
     if (child.isMesh) {
-      if (toColor) {
-        const orig = originalMaterials.get(child.uuid)
-        if (orig) targetMaterials.set(child.uuid, orig.clone())
-      } else {
-        targetMaterials.set(child.uuid, stoneMaterial.clone())
-      }
-      child.material.transparent = true
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach((m) => {
+        m.transparent = true
+      })
     }
   })
 
-  let swapped = false
-  function animateTransition(now) {
+  let doSwap = () => restoreOriginalMaps()
+
+  function animateFade(now) {
+    if (!currentModel) return
     const elapsed = now - start
     const progress = Math.min(elapsed / duration, 1)
-    const ease = progress < 0.5
-      ? 2 * progress * progress
-      : 1 - Math.pow(-2 * progress + 2, 2) / 2
+    const ease =
+      progress < 0.5
+        ? 2 * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2
 
     if (progress < 0.5) {
-      currentModel.value.traverse((child) => {
-        if (child.isMesh) child.material.opacity = 1 - ease * 2
+      // Fade out
+      currentModel.traverse((child) => {
+        if (child.isMesh) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          mats.forEach((m) => {
+            m.opacity = 1 - ease * 2
+          })
+        }
       })
     } else {
+      // Swap at midpoint
       if (!swapped) {
         swapped = true
-        currentModel.value.traverse((child) => {
-          if (child.isMesh) {
-            const target = targetMaterials.get(child.uuid)
-            if (target) {
-              child.material = target
-              child.material.transparent = true
-              child.material.opacity = 0
-            }
-          }
-        })
+        doSwap()
       }
-      currentModel.value.traverse((child) => {
-        if (child.isMesh) child.material.opacity = (ease - 0.5) * 2
+      // Fade in
+      currentModel.traverse((child) => {
+        if (child.isMesh) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          mats.forEach((m) => {
+            m.opacity = (ease - 0.5) * 2
+          })
+        }
       })
     }
 
     if (progress < 1) {
-      requestAnimationFrame(animateTransition)
+      requestAnimationFrame(animateFade)
     } else {
-      currentModel.value.traverse((child) => {
+      // Restore opacity
+      currentModel.traverse((child) => {
         if (child.isMesh) {
-          child.material.opacity = 1
-          child.material.transparent = false
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
+          mats.forEach((m) => {
+            m.opacity = 1
+            m.transparent = false
+          })
         }
       })
       isColorMode.value = toColor
@@ -447,51 +478,26 @@ function toggleTexture() {
     }
   }
 
-  requestAnimationFrame(animateTransition)
-}
-
-function enterARView() {
-  showARViewer.value = true
-}
-
-function cleanupThreeScene() {
-  if (animationId) {
-    cancelAnimationFrame(animationId)
-    animationId = null
+  if (toColor && texUrl) {
+    new THREE.TextureLoader().load(
+      texUrl,
+      (tex) => {
+        tex.flipY = false
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.needsUpdate = true
+        doSwap = () => applyMapToModel(tex)
+        requestAnimationFrame(animateFade)
+      },
+      undefined,
+      (err) => {
+        console.error('Texture load error:', err)
+        isTransitioning.value = false
+      }
+    )
+  } else {
+    requestAnimationFrame(animateFade)
   }
-  if (renderer.value) {
-    renderer.value.dispose()
-    const container = modelContainer.value
-    if (container && renderer.value.domElement?.parentNode === container) {
-      container.removeChild(renderer.value.domElement)
-    }
-  }
-  scene.value = null
-  camera.value = null
-  renderer.value = null
-  controls.value = null
-  currentModel.value = null
-  originalMaterials.clear()
 }
-
-function onResize() {
-  const container = modelContainer.value
-  if (!container || !camera.value || !renderer.value) return
-  camera.value.aspect = container.clientWidth / container.clientHeight
-  camera.value.updateProjectionMatrix()
-  renderer.value.setSize(container.clientWidth, container.clientHeight)
-}
-
-onMounted(() => {
-  initCamera()
-  window.addEventListener('resize', onResize)
-})
-
-onBeforeUnmount(() => {
-  stopCamera()
-  cleanupThreeScene()
-  window.removeEventListener('resize', onResize)
-})
 </script>
 
 <style scoped>
@@ -504,22 +510,12 @@ onBeforeUnmount(() => {
   transform: translateY(100%);
   opacity: 0;
 }
-
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s ease;
 }
 .fade-enter-from,
 .fade-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.3s ease;
-}
-.modal-enter-from,
-.modal-leave-to {
   opacity: 0;
 }
 </style>

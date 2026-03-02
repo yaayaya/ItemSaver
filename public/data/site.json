@@ -37,12 +37,12 @@
     },
     "scanner": {
       "heading": "記憶掃描器",
-      "description": "3D 模型從石板痕跡中浮現，點擊「喚醒記憶」賦予色彩。",
+      "description": "3D 模型以原始面貌呈現，點擊「喚醒記憶」還原色彩。",
       "storyLabel": "📖 物件故事",
-      "stoneButton": "🪨 回到石材",
+      "stoneButton": "🎨 回到原色",
       "colorButton": "✨ 喚醒記憶",
-      "stoneStatus": "🪨 石材質感",
-      "colorStatus": "🎨 彩色原貌"
+      "stoneStatus": "✨ 原始色彩",
+      "colorStatus": "🎨 還原顏色"
     },
     "ar": {
       "heading": "AR 石板掃描",
@@ -50,11 +50,11 @@
       "scanning": "🔍 對準石板掃描...",
       "scanGuide": "將石板對準框內\n系統將自動識別",
       "demoHint": "▼ DEMO：模擬掃描偵測 ▼",
-      "stoneButton": "🪨 回到石材",
+      "stoneButton": "🎨 回到原色",
       "colorButton": "✨ 喚醒記憶",
       "arButton": "📱 AR 實景",
-      "stoneStatus": "🪨 石材質感",
-      "colorStatus": "🎨 彩色原貌（已復活）",
+      "stoneStatus": "✨ 原始色彩",
+      "colorStatus": "🎨 還原顏色",
       "storyToggleShow": "▶ 查看物件故事",
       "storyToggleHide": "▼ 收起故事",
       "cameraError": {
@@ -67,21 +67,21 @@
   "items": [
     {
       "id": 1,
-      "name": "太空人",
-      "story": "一位來自遠方的太空探險家，曾踏上無數星球，最終選擇將自己的記憶化為石板上的痕跡，等待被再次喚醒。",
-      "model_url": "/assets/Astronaut.glb",
-      "thumbnail": "🧑‍🚀",
-      "marker_image": "/assets/markers/astronaut_marker.png",
-      "original_texture": null,
+      "name": "石板",
+      "story": "一塊承載著歲月痕跡的石板，表面的紋路記錄著時間流逝的故事，等待著有緣人喚醒其中沉睡的色彩記憶。",
+      "model_url": "/assets/mesh_Model_3.glb",
+      "thumbnail": "🪨",
+      "marker_image": "/assets/markers/stone_marker.png",
+      "original_texture": "/assets/StoneColor.png",
       "stone_texture": null
     },
     {
       "id": 2,
-      "name": "小黃鴨",
-      "story": "一隻承載著童年回憶的小黃鴨，牠曾陪伴無數孩子度過快樂的洗澡時光，是最溫暖的記憶符號。",
-      "model_url": "/assets/Duck.glb",
-      "thumbnail": "🦆",
-      "marker_image": "/assets/markers/duck_marker.png",
+      "name": "藥膏",
+      "story": "一罐承載著療癒記憶的藥膏，曾撫慰過無數傷口，是溫柔與關懷的具體象徵，靜靜等待被重新看見。",
+      "model_url": "/assets/item_Model_3.glb",
+      "thumbnail": "🧴",
+      "marker_image": "/assets/markers/item_marker.png",
       "original_texture": null,
       "stone_texture": null
     }
