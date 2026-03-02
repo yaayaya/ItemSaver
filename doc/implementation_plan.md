@@ -1,60 +1,102 @@
 # Prototype 開發計畫
 
-基於業務大綱，為「記憶掃描器」與「萬物物件牆」打造一個可用於功能測試的 React Prototype。專案將專注於驗證 3D 互動與 AR 體驗，建立於 `d:\_Git\ItemSaver` 且支援 Vercel 部署。
+基於業務大綱，為「記憶掃描器」與「萬物物件牆」打造一個可用於功能測試的 Vue Prototype。專案將專注於驗證 3D 互動與 AR 體驗，建立於 `d:\_Git\ItemSaver` 且支援 Vercel 部署。
 
-## User Review Required
+## 設計決策
 
-> [!IMPORTANT]
->
-> 1. **資料來源**：由於只需針對功能測試，目前不會接真實後端資料庫 (如 Supabase)，而是使用固定的 Mock Data。
-> 2. **追蹤引擎**：在 Prototype 階段，由於 Encantar.js 需要相應的 Marker 編譯，我會先建立 Three.js 的基礎場景與材質切換邏輯，配合簡單的 WebAR 環境，以確保這條流程走得通。
-> 3. **專案路徑**：我預計會將專案直接初始化在 `d:\_Git\ItemSaver` 目錄下（或是您偏好在該目錄底下再建一個子資料夾存放 React 程式碼？）。
->
-> 請確認這些設定是否符合您的測試預期！
+1. **UI 框架**：使用 **Vue 3** (Composition API + `<script setup>`) 取代原先規劃的 React。
+2. **資料來源**：使用固定的 Mock Data（`src/data/mockItems.js`），不接真實後端。
+3. **追蹤引擎**：Prototype 階段先建立 Three.js 基礎場景與材質切換邏輯，Encantar.js NFT 追蹤待後續整合。
+4. **模型資源**：使用 `public/assets/` 目錄下的本地 `.glb` 模型（Astronaut.glb, Duck.glb）。
 
-## Proposed Changes
+## 技術棧
 
-### Frontend Application
+| 模塊 | 工具 | 說明 |
+|------|------|------|
+| 建置工具 | Vite 6 | 快速開發與生產建置 |
+| UI 框架 | Vue 3 + Vue Router 4 | SPA 路由與元件系統 |
+| 樣式 | Tailwind CSS 4 | 響應式 UI 快速開發 |
+| 物件牆渲染 | @google/model-viewer | 360 度預覽 + 系統原生 AR |
+| 3D 渲染控制 | Three.js | 掃描器模式的模型載入與材質切換 |
+| 部署 | Vercel | 自動部署 + HTTPS |
 
-- 使用 Vite + React 建置專案。
-- 使用 Tailwind CSS 快速開發 UI。
-- 添加 Vercel 部署輔助配置 (`vercel.json`)。
+## 專案結構
 
-#### [NEW] `package.json` & `vite.config.js`
+```
+ItemSaver/
+├── index.html                 # 入口 HTML
+├── package.json               # 依賴管理
+├── vite.config.js             # Vite 設定 (Vue plugin + Tailwind)
+├── vercel.json                # Vercel 部署設定
+├── public/
+│   └── assets/
+│       ├── Astronaut.glb      # 太空人模型
+│       └── Duck.glb           # 小黃鴨模型
+├── src/
+│   ├── main.js                # Vue app 入口
+│   ├── style.css              # 全域樣式 + Tailwind 引入
+│   ├── App.vue                # 主佈局 (導航 + RouterView)
+│   ├── router/
+│   │   └── index.js           # Vue Router 設定
+│   ├── data/
+│   │   └── mockItems.js       # Mock 物件資料
+│   ├── components/
+│   │   └── ModelViewer.vue    # model-viewer 封裝元件（支援 zoom props）
+│   └── pages/
+│       ├── Home.vue           # 首頁（三大功能入口）
+│       ├── ObjectWall.vue     # 萬物物件牆（靜態卡片 + 彈窗模式）
+│       ├── Scanner.vue        # 記憶掃描器（Three.js 材質切換）
+│       └── ARScanner.vue      # AR 石板掃描（相機 + 偵測 + AR 實景）
+└── doc/
+    ├── implementation_plan.md # 本文件
+    ├── asset_replacement_guide.md  # 模型替換指南
+    └── 業務大綱.md
+```
 
-初始化 Vite + React 環境，並加入 `react-router-dom`, `three`, `@google/model-viewer` 以及 Tailwind CSS 相關套件。
+## 頁面功能說明
 
-#### [NEW] `src/App.jsx` & `src/main.jsx`
+### 首頁 (`/`)
+- 專案介紹與三大功能入口卡片（物件牆、掃描器、AR 掃描）。
 
-設定前端路由，包含三個主要頁面：首頁 (Home), 掃描器 (Scanner), 物件牆 (ObjectWall)。
+### 萬物物件牆 (`/wall`)
+- **靜態卡片預覽**：以 Emoji 縮圖呈現物件網格，避免一次載入大量 3D 模型。
+- **點擊開啟彈窗**：彈窗中載入 `<model-viewer>` 互動式 3D 預覽。
+- **無障礙操作**：彈窗右側有大尺寸放大 (+)、縮小 (−)、重置 (↺) 按鈕，方便長者操作。
+- **AR 功能**：彈窗內 AR 按鈕啟動手機原生 AR (iOS QuickLook / Android Scene Viewer)。
+- **故事展示**：彈窗下方顯示物件故事。
 
-#### [NEW] `src/data/mockItems.js`
+### 記憶掃描器 (`/scanner`)
+- 使用 Three.js 建立 3D 場景，載入 GLB 模型。
+- 支援切換不同物件模型。
+- **「喚醒記憶」按鈕**：將模型材質從灰階石材切換為原始彩色（反之亦然）。
+- OrbitControls 支援旋轉、縮放互動。
 
-定義測試用物件庫模型，包含：名稱、故事、3D 模型 (.glb) 網址、灰階與彩色貼圖的對應 URL（使用公共資源或產出的測試檔）。
+### AR 石板掃描 (`/ar`)
+- **相機即時預覽**：啟動手機後置相機，全螢幕顯示。
+- **石板偵測**：DEMO 階段以模擬按鈕觸發偵測（未來整合 Encantar.js NFT 追蹤）。
+- **3D 模型浮現**：偵測到石板後，底部浮現 Three.js 場景，預設以石材質感呈現。
+- **喚醒記憶**：切換材質，讓灰色石板「復活」為彩色。
+- **AR 實景**：點擊 AR 按鈕進入 `<model-viewer>` AR 模式，將模型放置到現實世界中互動。
 
-#### [NEW] `src/pages/ObjectWall.jsx` & `src/components/ModelViewer.jsx`
+## 開發指令
 
-- 呈現物件列表。
-- 實作 `<model-viewer>`，確保支援 360 度旋轉與行動裝置的 AR 按鈕。
-
-#### [NEW] `src/pages/Scanner.jsx`
-
-- 加入 Web 相機訪問。
-- 設定 Three.js 場景以呈現 3D 模型。
-- 實作「喚醒記憶」按鈕：點擊後動態載入並替換 3D 模型的材質 (Stone -> Color)。
+```bash
+npm install     # 安裝依賴
+npm run dev     # 啟動開發伺服器
+npm run build   # 生產建置
+npm run preview # 預覽生產版本
+```
 
 ## Verification Plan
-
-### Automated Tests
-
-無。本階段著重核心互動驗證。
 
 ### Manual Verification
 
 1. **本機環境測試**：
-   - 執行 `npm run dev` 並透過瀏覽器確認網頁佈局。
-   - 使用手機透過本機 IP 連線，點擊物件牆的 AR 按鈕，檢查是否能開啟 OS 原生的 AR 預覽 (iOS QuickLook 或 Android Scene Viewer)。
-   - 在 Scanner 頁面允許相機權限，確認 Three.js 模型渲染正確，並測試材質切換功能。
+   - 執行 `npm run dev` 並透過瀏覽器確認四個頁面佈局正確。
+   - 物件牆：確認靜態卡片點擊開啟彈窗，彈窗內模型可旋轉，放大縮小按鈕正常。
+   - 掃描器：確認 Three.js 模型載入，材質切換功能正常運作。
+   - AR 掃描：確認相機啟動、模擬偵測、模型載入、材質切換、AR 實景功能。
+   - 使用手機透過本機 IP 連線，測試相機與 AR 功能。
 2. **Vercel 部署驗證**：
-   - 使用 Vercel CLI 或連接 GitHub 自動部署。
-   - 在具有 HTTPS 的 Vercel 生成網址下，透過手機進行實機流程測試，驗證 AR 與相機功能是否在部署環境中正常運作。
+   - 連接 GitHub 自動部署或使用 Vercel CLI。
+   - 在 HTTPS 環境下透過手機進行 AR 實測（相機權限需 HTTPS）。

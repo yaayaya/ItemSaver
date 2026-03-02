@@ -1,0 +1,89 @@
+{
+  "site": {
+    "title": "萬物保存計畫",
+    "subtitle": "ItemSaver",
+    "description": "每一件物品都承載著一段記憶。掃描石板上的痕跡，喚醒沉睡的色彩。",
+    "footer": "萬物保存計畫 Prototype © 2026"
+  },
+  "pages": {
+    "home": {
+      "heading": "萬物保存計畫",
+      "description": "每一件物品都承載著一段記憶。\n掃描石板上的痕跡，喚醒沉睡的色彩。",
+      "cards": {
+        "wall": {
+          "icon": "🏛️",
+          "title": "萬物物件牆",
+          "description": "瀏覽所有被數位化保存的物件，360 度旋轉觀察，還能透過 AR 把它帶回家。"
+        },
+        "scanner": {
+          "icon": "🔍",
+          "title": "記憶掃描器",
+          "description": "選擇物件查看 3D 模型，切換材質喚醒石板上沉睡的色彩記憶。"
+        },
+        "ar": {
+          "icon": "📱",
+          "title": "AR 石板掃描",
+          "description": "開啟相機掃描石板輪廓，3D 模型即時浮現，還能放進現實世界互動。"
+        }
+      }
+    },
+    "wall": {
+      "heading": "萬物物件牆",
+      "description": "點擊物件卡片查看 3D 模型細節，支援 360 度旋轉與 AR 預覽。",
+      "hint": "👆 拖曳旋轉 ・ 🔍 按鈕放大縮小",
+      "storyLabel": "📖 物件故事",
+      "arButton": "📱 在 AR 中查看",
+      "fullscreenButton": "⛶ 全螢幕"
+    },
+    "scanner": {
+      "heading": "記憶掃描器",
+      "description": "3D 模型從石板痕跡中浮現，點擊「喚醒記憶」賦予色彩。",
+      "storyLabel": "📖 物件故事",
+      "stoneButton": "🪨 回到石材",
+      "colorButton": "✨ 喚醒記憶",
+      "stoneStatus": "🪨 石材質感",
+      "colorStatus": "🎨 彩色原貌"
+    },
+    "ar": {
+      "heading": "AR 石板掃描",
+      "cameraLoading": "📷 啟動相機中...",
+      "scanning": "🔍 對準石板掃描...",
+      "scanGuide": "將石板對準框內\n系統將自動識別",
+      "demoHint": "▼ DEMO：模擬掃描偵測 ▼",
+      "stoneButton": "🪨 回到石材",
+      "colorButton": "✨ 喚醒記憶",
+      "arButton": "📱 AR 實景",
+      "stoneStatus": "🪨 石材質感",
+      "colorStatus": "🎨 彩色原貌（已復活）",
+      "storyToggleShow": "▶ 查看物件故事",
+      "storyToggleHide": "▼ 收起故事",
+      "cameraError": {
+        "title": "無法存取相機",
+        "message": "請確認已授予相機權限，或使用 HTTPS 連線。",
+        "retry": "重試"
+      }
+    }
+  },
+  "items": [
+    {
+      "id": 1,
+      "name": "太空人",
+      "story": "一位來自遠方的太空探險家，曾踏上無數星球，最終選擇將自己的記憶化為石板上的痕跡，等待被再次喚醒。",
+      "model_url": "/assets/Astronaut.glb",
+      "thumbnail": "🧑‍🚀",
+      "marker_image": "/assets/markers/astronaut_marker.png",
+      "original_texture": null,
+      "stone_texture": null
+    },
+    {
+      "id": 2,
+      "name": "小黃鴨",
+      "story": "一隻承載著童年回憶的小黃鴨，牠曾陪伴無數孩子度過快樂的洗澡時光，是最溫暖的記憶符號。",
+      "model_url": "/assets/Duck.glb",
+      "thumbnail": "🦆",
+      "marker_image": "/assets/markers/duck_marker.png",
+      "original_texture": null,
+      "stone_texture": null
+    }
+  ]
+}
