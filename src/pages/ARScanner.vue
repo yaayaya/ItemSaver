@@ -26,8 +26,8 @@
         <a-gltf-model
           ref="modelEntity"
           src="#stone-model"
-          position="0 0 0"
-          scale="0.1 0.1 0.1"
+          position="0 -0.15 0.2"
+          scale="0.06 0.06 0.06"
         ></a-gltf-model>
       </a-entity>
     </a-scene>
@@ -227,19 +227,7 @@ onMounted(async () => {
       currentModel = mesh;
       originalMaterials.clear();
 
-      // Auto-scale
-      const box = new THREE.Box3().setFromObject(mesh);
-      const size = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z);
-      if (maxDim > 0) {
-        const s = 1.1 / maxDim;
-        modelEl.setAttribute("scale", `${s} ${s} ${s}`);
-        const center = box.getCenter(new THREE.Vector3());
-        modelEl.setAttribute(
-          "position",
-          `${-center.x * s} ${-center.y * s} ${-center.z * s}`,
-        );
-      }
+      // 大小與位置由 HTML 屬性控制，JS 只做材質備份
 
       // CRITICAL: Backup and initial strip for Stone look
       mesh.traverse((child) => {
