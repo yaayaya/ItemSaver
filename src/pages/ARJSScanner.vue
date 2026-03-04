@@ -1,9 +1,9 @@
 <template>
-  <div>
+  <div class="arjs-container">
     <!-- Camera Permission Gate -->
     <div
       v-if="step === 'permission'"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 p-6"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900 p-6"
     >
       <div class="text-center max-w-sm">
         <div class="text-6xl mb-6">📷</div>
@@ -30,7 +30,7 @@
     <!-- Loading AR.js -->
     <div
       v-if="step === 'loading'"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900"
     >
       <div class="text-center p-8">
         <div class="relative w-16 h-16 mx-auto mb-6">
@@ -40,28 +40,21 @@
           <div
             class="absolute inset-0 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin"
           ></div>
-          <div
-            class="absolute inset-2 rounded-full border-4 border-indigo-500/20"
-          ></div>
-          <div
-            class="absolute inset-2 rounded-full border-4 border-indigo-500 border-b-transparent animate-spin"
-            style="animation-direction: reverse; animation-duration: 0.8s"
-          ></div>
         </div>
-        <h2 class="text-xl font-bold text-white mb-2">載入 AR.js 引擎</h2>
+        <h2 class="text-xl font-bold text-white mb-2">載入 AR 引擎</h2>
         <p class="text-slate-400 text-sm">正在初始化 NFT 追蹤模組…</p>
       </div>
     </div>
 
-    <!-- AR.js + A-Frame Scene — NFT tracking -->
+    <!-- AR.js Scene -->
     <a-scene
       v-if="step === 'ready' && !arError && stoneItem"
       ref="aSceneEl"
+      embedded
       vr-mode-ui="enabled: false"
       renderer="logarithmicDepthBuffer: true; precision: mediump; antialias: true; alpha: true"
-      arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 960; displayWidth: 1280; displayHeight: 960;"
+      arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false; displayWidth: 1280; displayHeight: 960; canvasWidth: 1280; canvasHeight: 960;"
       loading-screen="enabled: false"
-      device-orientation-permission-ui="enabled: false"
     >
       <a-assets>
         <a-asset-item
@@ -70,6 +63,13 @@
         ></a-asset-item>
       </a-assets>
 
+      <!-- 
+        NFT 坐標系說明：
+        NFT 單位通常對應圖片寬度。
+        要把模型放大到比圖片大 15%，scale 應該設定在 1.15 左右 (基於模型原尺寸)。
+        但因為 GLB 原始尺寸可能很小，我們需要動態計算或給予一個較大的基準。
+        position 設定在中心。
+      -->
       <a-nft
         ref="nftEntity"
         type="nft"
@@ -79,37 +79,41 @@
         smoothTolerance="0.01"
         smoothThreshold="5"
       >
-        <a-light type="ambient" intensity="0.6"></a-light>
-        <a-light type="directional" intensity="1.2" position="5 10 7"></a-light>
-        <a-gltf-model
-          ref="modelEntity"
-          src="#arjs-stone-model"
-          scale="5 5 5"
-          position="150 300 0"
-          rotation="0 0 0"
-        ></a-gltf-model>
+        <a-entity ref="modelContainer" position="100 150 0" rotation="-90 0 0">
+          <a-light type="ambient" intensity="0.8"></a-light>
+          <a-light
+            type="directional"
+            intensity="1.5"
+            position="5 10 7"
+          ></a-light>
+
+          <a-gltf-model
+            ref="modelEntity"
+            src="#arjs-stone-model"
+            scale="150 150 150"
+            position="0 0 0"
+          ></a-gltf-model>
+        </a-entity>
       </a-nft>
 
       <a-entity camera></a-entity>
     </a-scene>
 
-    <!-- HUD overlay — fixed on top of fullscreen A-Frame -->
+    <!-- HUD -->
     <div v-if="step === 'ready' && !arError" class="ar-hud">
       <div
         class="ar-hud-topbar pointer-events-auto flex items-center justify-between p-4"
       >
         <router-link
           to="/"
-          class="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm text-white text-sm hover:bg-black/70 transition-colors"
+          class="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm text-white text-sm"
         >
           ← 返回
         </router-link>
         <div
           class="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm text-sm"
         >
-          <span v-if="!sessionReady" class="text-yellow-400"
-            >📷 啟動 AR.js 引擎中…</span
-          >
+          <span v-if="!sessionReady" class="text-yellow-400">📷 啟動中…</span>
           <span
             v-else-if="tracking"
             class="text-green-400 flex items-center gap-1"
@@ -117,98 +121,68 @@
             <span
               class="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"
             ></span>
-            追蹤中：{{ stoneItem?.name }}
+            偵測到：{{ stoneItem?.name }}
           </span>
-          <span v-else class="text-slate-300">將石板對準畫面</span>
+          <span v-else class="text-slate-300">掃描石板...</span>
         </div>
-      </div>
-
-      <!-- AR.js badge -->
-      <div class="ar-badge pointer-events-none">
-        <span class="ar-badge-dot"></span>
-        AR.js NFT 測試模式
       </div>
 
       <Transition name="slide-up">
         <div
           v-if="tracking"
-          class="ar-hud-bottom pointer-events-auto absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 p-4"
+          class="ar-hud-bottom pointer-events-auto absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 p-4 pb-8"
         >
-          <div class="flex items-center justify-between mb-3">
-            <div>
-              <h3 class="text-white font-bold text-lg">
-                {{ stoneItem?.thumbnail }} {{ stoneItem?.name }}
-              </h3>
-              <p class="text-xs text-slate-400">
-                材質：{{ isColorMode ? "🎨 已喚醒色彩" : "✨ 原始石材" }}
-              </p>
-            </div>
+          <div class="mb-3 text-center">
+            <h3 class="text-white font-bold text-lg">
+              {{ stoneItem?.thumbnail }} {{ stoneItem?.name }}
+            </h3>
+            <p
+              class="text-[10px] text-slate-500 uppercase tracking-widest mt-1"
+            >
+              AR.js NFT Performance Mode
+            </p>
           </div>
 
           <button
             @click="toggleTexture"
             :disabled="isTransitioning"
             :class="[
-              'w-full px-5 py-3 rounded-xl font-medium text-base transition-all duration-300',
+              'w-full px-5 py-4 rounded-xl font-bold text-base transition-all duration-300',
               isColorMode
-                ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25',
+                ? 'bg-slate-700 text-white'
+                : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25',
               isTransitioning ? 'opacity-50 cursor-not-allowed' : '',
             ]"
           >
             {{ isColorMode ? "🎨 回到原色" : "✨ 喚醒記憶" }}
           </button>
-
-          <button
-            @click="showStory = !showStory"
-            class="w-full mt-3 text-left text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
-            {{ showStory ? "▲ 收起故事" : "▼ 看這件物品的故事" }}
-          </button>
-          <Transition name="fade">
-            <p
-              v-if="showStory"
-              class="mt-2 text-sm text-slate-300 leading-relaxed bg-slate-800/50 p-3 rounded-lg"
-            >
-              {{ stoneItem?.story }}
-            </p>
-          </Transition>
         </div>
       </Transition>
     </div>
 
-    <!-- Scanning hint — minimal, no frame constraints -->
+    <!-- Scanning hint -->
     <div
       v-if="step === 'ready' && sessionReady && !tracking && !arError"
       class="ar-scan-hint"
     >
       <span class="ar-scan-dot"></span>
-      將石板移入畫面，系統自動識別
+      對準石板紋路...
     </div>
 
     <!-- Error screen -->
     <div
       v-if="arError"
-      class="fixed inset-0 z-30 flex items-center justify-center bg-slate-900"
+      class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900"
     >
       <div class="text-center p-8 max-w-md">
-        <div class="text-5xl mb-4">📷</div>
-        <h2 class="text-xl font-bold text-white mb-2">AR 功能無法啟動</h2>
+        <h2 class="text-xl font-bold text-white mb-2">AR 無法啟動</h2>
         <p class="text-slate-400 mb-6">{{ arError }}</p>
-        <div class="flex gap-3 justify-center">
-          <button
-            @click="retryInit"
-            class="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors"
-          >
-            🔄 重試
-          </button>
-          <router-link
-            to="/"
-            class="px-6 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium transition-colors inline-block"
-          >
-            返回首頁
-          </router-link>
-        </div>
+        <button
+          @click="retryInit"
+          class="px-6 py-3 rounded-xl bg-emerald-600 text-white"
+        >
+          🔄 重試
+        </button>
       </div>
     </div>
   </div>
@@ -225,132 +199,133 @@ const stoneItem = ref(null);
 const aSceneEl = ref(null);
 const nftEntity = ref(null);
 const modelEntity = ref(null);
+const modelContainer = ref(null);
 
-// step: 'permission' | 'loading' | 'ready'
 const step = ref("permission");
 const sessionReady = ref(false);
 const tracking = ref(false);
 const arError = ref(null);
-const showStory = ref(false);
 
 const isColorMode = ref(false);
 const isTransitioning = ref(false);
 
 let currentModel = null;
 const originalMaterials = new Map();
-let arjsScriptEl = null;
 
-// ---- Dynamic AR.js loader ----
-function loadARJS() {
-  return new Promise((resolve, reject) => {
-    // Check if already loaded (e.g. navigated back)
-    if (window.AFRAME && window.AFRAME.components["arjs"]) {
-      resolve();
-      return;
+// ---- Cleanup Helper ----
+function cleanupARJS() {
+  console.log("[ARJSScanner] Starting cleanup...");
+
+  // 1. Stop AR.js and A-Frame
+  if (aSceneEl.value) {
+    const scene = aSceneEl.value;
+    try {
+      if (scene.systems?.arjs) scene.systems.arjs.stop();
+      if (scene.pause) scene.pause();
+    } catch (e) {
+      console.warn(e);
     }
+  }
 
-    const script = document.createElement("script");
-    script.src =
-      "https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar-nft.js";
-    script.onload = () => {
-      console.log("[ARJSScanner] AR.js NFT loaded successfully");
-      resolve();
-    };
-    script.onerror = () => {
-      reject(new Error("無法載入 AR.js 函式庫"));
-    };
-    arjsScriptEl = script;
-    document.head.appendChild(script);
+  // 2. Remove all injected video elements (AR.js injects these to body)
+  const videos = document.querySelectorAll("video");
+  videos.forEach((v) => {
+    if (v.parentNode) v.parentNode.removeChild(v);
   });
+
+  // 3. Remove injected canvas if any
+  const canvases = document.querySelectorAll(".a-canvas");
+  canvases.forEach((c) => {
+    if (c.parentNode) c.parentNode.removeChild(c);
+  });
+
+  // 4. Remove AR.js generated styles on html/body
+  document.documentElement.classList.remove("a-fullscreen");
+  document.body.style.overflow = "";
+  document.body.style.margin = "";
+  document.body.style.height = "";
+  document.body.style.width = "";
 }
 
-// ---- Camera permission then init ----
+// ---- Lifecycle ----
+onMounted(() => {
+  stoneItem.value = items.value[0];
+});
+
+onBeforeUnmount(() => {
+  cleanupARJS();
+});
+
+// ---- Camera & Init ----
 async function requestCamera() {
   step.value = "loading";
   try {
-    // Explicitly request camera — this triggers the browser permission dialog
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: "environment" } },
       audio: false,
     });
-    // Stop the test stream immediately; AR.js will open its own
     stream.getTracks().forEach((t) => t.stop());
+
+    // Load AR.js if not present
+    if (!window.AFRAME.components["arjs"]) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src =
+          "https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js";
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    step.value = "ready";
+    await nextTick();
+    initARListeners();
   } catch (e) {
-    arError.value = "相機存取被拒絕，請在瀏覽器設定中允許相機權限後重試。";
+    arError.value = "相機存取被拒絕，或瀏覽器不支持此功能。";
     step.value = "permission";
-    return;
   }
-  await initAR();
 }
 
-async function initAR() {
-  arError.value = null;
-
-  try {
-    await loadARJS();
-    step.value = "ready";
-  } catch (e) {
-    arError.value = e.message || "AR.js 載入失敗，請檢查網路連線。";
-    step.value = "permission";
-    return;
-  }
-
-  stoneItem.value = items.value[0];
-  if (!stoneItem.value) {
-    arError.value = "找不到可用的物件資料";
-    return;
-  }
-
-  await nextTick();
-  await nextTick(); // double nextTick to ensure a-scene is in DOM
-
+function initARListeners() {
   const sceneEl = aSceneEl.value;
-  if (!sceneEl) {
-    arError.value = "AR 場景初始化失敗";
-    return;
-  }
+  if (!sceneEl) return;
 
-  // Scene ready
-  const onSceneReady = () => {
+  sceneEl.addEventListener("loaded", () => {
     sessionReady.value = true;
-    console.log("[ARJSScanner] AR scene ready");
-  };
-
-  if (sceneEl.hasLoaded) {
-    onSceneReady();
-  } else {
-    sceneEl.addEventListener("loaded", onSceneReady);
-  }
-
-  sceneEl.addEventListener("arError", () => {
-    arError.value = "相機啟動失敗，請允許相機權限後重試。";
+    console.log("Scene Loaded");
   });
 
-  await nextTick();
-
-  // NFT tracking events
   const nftEl = nftEntity.value;
   if (nftEl) {
     nftEl.addEventListener("markerFound", () => {
       tracking.value = true;
-      console.log("[ARJSScanner] NFT marker found!");
+      console.log("NFT Found");
     });
     nftEl.addEventListener("markerLost", () => {
       tracking.value = false;
-      console.log("[ARJSScanner] NFT marker lost");
     });
   }
 
-  // Model loaded event
   const modelEl = modelEntity.value;
   if (modelEl) {
     modelEl.addEventListener("model-loaded", () => {
       const mesh = modelEl.getObject3D("mesh");
       if (!mesh) return;
       currentModel = mesh;
-      originalMaterials.clear();
 
-      console.log("[ARJSScanner] Model loaded successfully");
+      // Auto-scale to be 15% larger than default aspect
+      // In NFT mode, we use the image-target coordinates.
+      // We scale the model to a reasonable pixel-base size.
+      const box = new THREE.Box3().setFromObject(mesh);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+
+      // Request: "大 15% 就好"
+      // Based on common NFT scale experiences, we target around 300-400 units
+      const targetUnitSize = 345; // 300 * 1.15
+      const s = targetUnitSize / maxDim;
+      modelEl.setAttribute("scale", `${s} ${s} ${s}`);
 
       mesh.traverse((child) => {
         if (child.isMesh) {
@@ -368,41 +343,18 @@ async function initAR() {
           );
         }
       });
-
-      // Default: dormant grey look
       applyDormantLook();
     });
   }
 }
 
 function retryInit() {
+  cleanupARJS();
   arError.value = null;
   step.value = "permission";
-  sessionReady.value = false;
-  tracking.value = false;
 }
 
-onMounted(() => {
-  // Don't auto-start — wait for user to tap "開啟相機"
-});
-
-onBeforeUnmount(() => {
-  // Clean up the AR.js scene
-  const scene = aSceneEl.value;
-  if (scene) {
-    try {
-      const arSystem = scene.systems?.["arjs"];
-      if (arSystem && arSystem.stop) arSystem.stop();
-    } catch (e) {
-      console.warn("[ARJSScanner] Error stopping AR system:", e);
-    }
-  }
-  currentModel = null;
-  originalMaterials.clear();
-});
-
-// ---- Texture toggle ----
-
+// ---- Texture Logic (Same as before) ----
 function applyDormantLook() {
   if (!currentModel) return;
   currentModel.traverse((child) => {
@@ -444,87 +396,25 @@ function restoreOriginalMaps() {
 function toggleTexture() {
   if (!currentModel || isTransitioning.value) return;
   isTransitioning.value = true;
-
   const toColor = !isColorMode.value;
-  const duration = 800;
-  const start = performance.now();
-  let swapped = false;
 
-  currentModel.traverse((child) => {
-    if (child.isMesh) {
-      const mats = Array.isArray(child.material)
-        ? child.material
-        : [child.material];
-      mats.forEach((m) => {
-        m.transparent = true;
-      });
-    }
-  });
+  // Simple swap for robustness in AR.js
+  if (toColor) restoreOriginalMaps();
+  else applyDormantLook();
 
-  let doSwap = () => (toColor ? restoreOriginalMaps() : applyDormantLook());
-
-  function animateFade(now) {
-    if (!currentModel) return;
-    const elapsed = now - start;
-    const progress = Math.min(elapsed / duration, 1);
-    const ease =
-      progress < 0.5
-        ? 2 * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-    if (progress < 0.5) {
-      currentModel.traverse((child) => {
-        if (child.isMesh) {
-          const mats = Array.isArray(child.material)
-            ? child.material
-            : [child.material];
-          mats.forEach((m) => {
-            m.opacity = 1 - ease * 2;
-          });
-        }
-      });
-    } else {
-      if (!swapped) {
-        swapped = true;
-        doSwap();
-      }
-      currentModel.traverse((child) => {
-        if (child.isMesh) {
-          const mats = Array.isArray(child.material)
-            ? child.material
-            : [child.material];
-          mats.forEach((m) => {
-            m.opacity = (ease - 0.5) * 2;
-          });
-        }
-      });
-    }
-
-    if (progress < 1) {
-      requestAnimationFrame(animateFade);
-    } else {
-      currentModel.traverse((child) => {
-        if (child.isMesh) {
-          const mats = Array.isArray(child.material)
-            ? child.material
-            : [child.material];
-          mats.forEach((m) => {
-            m.opacity = 1;
-            m.transparent = false;
-          });
-        }
-      });
-      isColorMode.value = toColor;
-      isTransitioning.value = false;
-    }
-  }
-
-  requestAnimationFrame(animateFade);
+  isColorMode.value = toColor;
+  isTransitioning.value = false;
 }
 </script>
 
 <style scoped>
-/* HUD floats fixed on top of fullscreen A-Frame */
+.arjs-container {
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  overflow: hidden;
+}
+
 .ar-hud {
   position: fixed;
   inset: 0;
@@ -544,88 +434,45 @@ function toggleTexture() {
   padding-right: max(1rem, env(safe-area-inset-right));
 }
 
-/* AR.js badge */
-.ar-badge {
-  position: fixed;
-  top: 4.5rem;
-  right: 1rem;
-  z-index: 11;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: 9999px;
-  background: rgba(16, 185, 129, 0.75);
-  backdrop-filter: blur(8px);
-  color: white;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.ar-badge-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #6ee7b7;
-  animation: badge-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes badge-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(0.7);
-  }
-}
-
-/* Minimal scanning hint pill at the bottom */
 .ar-scan-hint {
   position: fixed;
-  bottom: 2.5rem;
+  bottom: 20%;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 9;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1.25rem;
-  border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(10px);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.8rem;
-  pointer-events: none;
-  white-space: nowrap;
+  gap: 8px;
 }
 
 .ar-scan-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
+  background: #6366f1;
   border-radius: 50%;
-  background: #a5b4fc;
-  animation: dot-pulse 1.8s ease-in-out infinite;
+  animation: pulse 1s infinite;
 }
 
-@keyframes dot-pulse {
-  0%,
-  100% {
-    opacity: 1;
+@keyframes pulse {
+  0% {
     transform: scale(1);
+    opacity: 1;
   }
   50% {
-    opacity: 0.4;
-    transform: scale(0.65);
+    transform: scale(1.5);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
-/* Transitions */
 .slide-up-enter-active,
 .slide-up-leave-active {
   transition:
@@ -637,32 +484,36 @@ function toggleTexture() {
   transform: translateY(100%);
   opacity: 0;
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
 </style>
 
-<!-- Unscoped: ensure A-Frame fullscreen height chain works -->
 <style>
-html.a-fullscreen,
-html.a-fullscreen body,
-html.a-fullscreen body > #app,
-html.a-fullscreen body > #app > *,
-html.a-fullscreen body > #app > * > a-scene {
+/* 
+  強制修正 AR.js 注入 body 的 video 元件 
+  使其滿版且不會遮擋 UI
+*/
+video {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
   width: 100% !important;
   height: 100% !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
+  object-fit: cover !important;
+  z-index: -1 !important;
 }
 
-html.a-fullscreen body > #app > * > a-scene {
+.a-canvas {
   position: fixed !important;
-  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 1 !important;
+}
+
+html.a-fullscreen,
+html.a-fullscreen body {
+  overflow: hidden !important;
+  height: 100% !important;
+  width: 100% !important;
 }
 </style>
