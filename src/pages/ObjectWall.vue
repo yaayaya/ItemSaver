@@ -24,12 +24,15 @@
             min-camera-orbit="-80deg auto auto"
             max-camera-orbit="80deg auto auto"
             disable-zoom
-            style="width: 100%; height: 100%; pointer-events: none;"
+            @load="onModelLoad($event, item)"
+            style="width: 100%; height: 100%; pointer-events: none"
           ></model-viewer>
         </div>
         <!-- Name -->
         <div class="p-3 text-center">
-          <h3 class="text-sm font-semibold text-white group-hover:text-indigo-400 transition-colors">
+          <h3
+            class="text-sm font-semibold text-white group-hover:text-indigo-400 transition-colors"
+          >
             {{ item.name }}
           </h3>
           <p class="text-xs text-slate-500 mt-1">點擊查看</p>
@@ -40,17 +43,23 @@
     <!-- Fullscreen Viewer (opens directly) -->
     <Teleport to="body">
       <Transition name="modal">
-        <div v-if="activeItem" class="fixed inset-0 z-[200] bg-black flex flex-col">
+        <div
+          v-if="activeItem"
+          class="fixed inset-0 z-[200] bg-black flex flex-col"
+        >
           <!-- Top Bar -->
-          <div class="flex items-center justify-between px-4 py-3 bg-slate-900/90 backdrop-blur-sm z-10">
+          <div
+            class="flex items-center justify-between px-4 py-3 bg-slate-900/90 backdrop-blur-sm z-10"
+          >
             <h3 class="text-white font-bold text-lg">{{ activeItem.name }}</h3>
             <div class="flex gap-2">
-              <!-- Toggle UI controls -->
               <button
                 @click="showControls = !showControls"
                 :class="[
                   'w-9 h-9 rounded-full flex items-center justify-center text-white text-sm transition-colors',
-                  showControls ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-slate-700/80 hover:bg-slate-600'
+                  showControls
+                    ? 'bg-indigo-600 hover:bg-indigo-500'
+                    : 'bg-slate-700/80 hover:bg-slate-600',
                 ]"
                 title="顯示/隱藏控制按鈕"
               >
@@ -77,12 +86,16 @@
               exposure="0.8"
               min-camera-orbit="-80deg auto auto"
               max-camera-orbit="80deg auto auto"
-              style="width: 100%; height: 100%;"
+              @load="onModelLoad($event, activeItem)"
+              style="width: 100%; height: 100%"
             ></model-viewer>
 
             <!-- Zoom Controls (toggle) -->
             <Transition name="fade">
-              <div v-if="showControls" class="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-10">
+              <div
+                v-if="showControls"
+                class="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-10"
+              >
                 <button
                   @click="zoomIn"
                   class="w-14 h-14 rounded-full bg-indigo-600/90 hover:bg-indigo-500 text-white text-3xl font-bold flex items-center justify-center shadow-lg transition-colors active:scale-95"
@@ -105,15 +118,23 @@
             </Transition>
 
             <!-- Hint -->
-            <div class="absolute bottom-3 left-3 text-xs text-slate-400 bg-slate-900/60 px-2 py-1 rounded">
+            <div
+              class="absolute bottom-3 left-3 text-xs text-slate-400 bg-slate-900/60 px-2 py-1 rounded"
+            >
               {{ p.hint }}
             </div>
           </div>
 
           <!-- Story Bar -->
-          <div class="px-4 py-3 bg-slate-900/90 backdrop-blur-sm border-t border-slate-700">
-            <h4 class="text-sm font-semibold text-indigo-400 mb-1">{{ p.storyLabel }}</h4>
-            <p class="text-slate-300 text-sm leading-relaxed">{{ activeItem.story }}</p>
+          <div
+            class="px-4 py-3 bg-slate-900/90 backdrop-blur-sm border-t border-slate-700"
+          >
+            <h4 class="text-sm font-semibold text-indigo-400 mb-1">
+              {{ p.storyLabel }}
+            </h4>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              {{ activeItem.story }}
+            </p>
           </div>
         </div>
       </Transition>
@@ -122,46 +143,61 @@
 </template>
 
 <script setup>
-import '@google/model-viewer'
-import { ref, computed } from 'vue'
-import { useSiteData } from '../composables/useSiteData.js'
+import "@google/model-viewer";
+import { ref, computed } from "vue";
+import { useSiteData } from "../composables/useSiteData.js";
 
-const { items, page } = useSiteData()
-const p = computed(() => page('wall'))
+const { items, page } = useSiteData();
+const p = computed(() => page("wall"));
 
-const activeItem = ref(null)
-const showControls = ref(false)
-const viewerEl = ref(null)
+const activeItem = ref(null);
+const showControls = ref(false);
+const viewerEl = ref(null);
 
 function openViewer(item) {
-  activeItem.value = item
-  showControls.value = false
-  document.body.style.overflow = 'hidden'
+  activeItem.value = item;
+  showControls.value = false;
+  document.body.style.overflow = "hidden";
 }
 
 function closeViewer() {
-  activeItem.value = null
-  document.body.style.overflow = ''
+  activeItem.value = null;
+  document.body.style.overflow = "";
 }
 
 function zoomIn() {
   if (viewerEl.value) {
-    const fov = parseFloat(viewerEl.value.getFieldOfView())
-    viewerEl.value.fieldOfView = Math.max(fov - 10, 10) + 'deg'
+    const fov = parseFloat(viewerEl.value.getFieldOfView());
+    viewerEl.value.fieldOfView = Math.max(fov - 10, 10) + "deg";
   }
 }
 function zoomOut() {
   if (viewerEl.value) {
-    const fov = parseFloat(viewerEl.value.getFieldOfView())
-    viewerEl.value.fieldOfView = Math.min(fov + 10, 90) + 'deg'
+    const fov = parseFloat(viewerEl.value.getFieldOfView());
+    viewerEl.value.fieldOfView = Math.min(fov + 10, 90) + "deg";
   }
 }
 function resetZoom() {
   if (viewerEl.value) {
-    viewerEl.value.fieldOfView = '45deg'
-    viewerEl.value.cameraOrbit = '0deg 75deg 105%'
-    viewerEl.value.minCameraOrbit = '-80deg auto auto'
-    viewerEl.value.maxCameraOrbit = '80deg auto auto'
+    viewerEl.value.fieldOfView = "45deg";
+    viewerEl.value.cameraOrbit = "0deg 75deg 105%";
+    viewerEl.value.minCameraOrbit = "-80deg auto auto";
+    viewerEl.value.maxCameraOrbit = "80deg auto auto";
+  }
+}
+
+/**
+ * Handle model loading - strip textures if it's the stone item
+ */
+function onModelLoad(event, item) {
+  if (item && item.id === 1) {
+    const mv = event.target;
+    if (!mv || !mv.model) return;
+    mv.model.materials.forEach((mat) => {
+      if (mat.pbrMetallicRoughness.baseColorTexture) {
+        mat.pbrMetallicRoughness.baseColorTexture.setTexture(null);
+      }
+    });
   }
 }
 </script>

@@ -72,18 +72,16 @@
       "model_url": "/assets/mesh_Model_3.glb",
       "thumbnail": "🪨",
       "marker_image": "/assets/markers/stone_marker.png",
-      "original_texture": "/assets/StoneColor.png",
-      "stone_texture": null
+      "color_texture": "/assets/StoneColor.png"
     },
     {
       "id": 2,
       "name": "藥膏",
-      "story": "一罐承載著療癒記憶的藥膏，曾撫慰過無數傷口，是溫柔與關懷的具體象徵，靜靜等待被重新看見。",
+      "story": "一罐承載著療癒記憶的藥膏，曾撫慰過無數傷口，是溫和與關懷的具體象徵，靜靜等待被重新看見。",
       "model_url": "/assets/item_Model_3.glb",
       "thumbnail": "🧴",
       "marker_image": "/assets/markers/item_marker.png",
-      "original_texture": null,
-      "stone_texture": null
+      "color_texture": null
     }
   ]
 }

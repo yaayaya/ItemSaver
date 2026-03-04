@@ -199,12 +199,8 @@ onMounted(async () => {
   const onSceneReady = () => {
     sessionReady.value = true;
   };
-
-  if (sceneEl.hasLoaded) {
-    onSceneReady();
-  } else {
-    sceneEl.addEventListener("loaded", onSceneReady);
-  }
+  if (sceneEl.hasLoaded) onSceneReady();
+  else sceneEl.addEventListener("loaded", onSceneReady);
 
   sceneEl.addEventListener("arReady", () => {
     sessionReady.value = true;
@@ -212,8 +208,6 @@ onMounted(async () => {
   sceneEl.addEventListener("arError", () => {
     arError.value = "相機啟動失敗，請允許相機權限後重試。";
   });
-
-  await nextTick();
 
   const tgtEl = targetEntity.value;
   if (tgtEl) {
@@ -233,15 +227,13 @@ onMounted(async () => {
       currentModel = mesh;
       originalMaterials.clear();
 
-      // Auto-scale: keep model about 15% smaller than the tracked stone target
+      // Auto-scale
       const box = new THREE.Box3().setFromObject(mesh);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
       if (maxDim > 0) {
-        const targetSize = 1.1;
-        const s = targetSize / maxDim;
+        const s = 1.1 / maxDim;
         modelEl.setAttribute("scale", `${s} ${s} ${s}`);
-        // Center model at marker origin to reduce persistent alignment offset
         const center = box.getCenter(new THREE.Vector3());
         modelEl.setAttribute(
           "position",
@@ -249,6 +241,7 @@ onMounted(async () => {
         );
       }
 
+      // CRITICAL: Backup and initial strip for Stone look
       mesh.traverse((child) => {
         if (child.isMesh) {
           child.frustumCulled = false;
@@ -259,15 +252,22 @@ onMounted(async () => {
             child.uuid,
             mats.map((m) => ({
               map: m.map || null,
-              color: m.color ? m.color.clone() : null,
+              color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
               vertexColors: m.vertexColors,
+              transparent: m.transparent,
+              opacity: m.opacity,
             })),
           );
+
+          // 如果是石板 (id: 1)，開局強制移除貼圖，顯示原始石材
+          if (stoneItem.value?.id === 1) {
+            mats.forEach((m) => {
+              m.map = null;
+              m.needsUpdate = true;
+            });
+          }
         }
       });
-
-      // Default state: dormant (no color). User taps "喚醒記憶" to restore full color.
-      applyDormantLook();
     });
   }
 });
@@ -278,22 +278,35 @@ onBeforeUnmount(() => {
     const arSystem = scene.systems?.["mindar-image-system"];
     if (arSystem && arSystem.stop) arSystem.stop();
   }
-
-  // 強制清除 A-Frame 留下的捲動鎖定類別與樣式
   document.documentElement.classList.remove("a-fullscreen");
   document.body.style.overflow = "";
-  document.body.style.margin = "";
-  document.body.style.height = "";
-  document.body.style.width = "";
-
   if (restoreGetUserMedia) restoreGetUserMedia();
-  currentModel = null;
-  originalMaterials.clear();
 });
 
-// ---- Texture toggle ----
+function restoreStoneLook() {
+  if (!currentModel) return;
+  currentModel.traverse((child) => {
+    if (child.isMesh) {
+      const origs = originalMaterials.get(child.uuid) || [];
+      const mats = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+      mats.forEach((m, i) => {
+        const o = origs[i];
+        if (o) {
+          m.map = null; // 強制不顯示貼圖（石材原樣）
+          m.color.set(0xffffff);
+          m.vertexColors = o.vertexColors;
+          m.transparent = o.transparent;
+          m.opacity = o.opacity;
+        }
+        m.needsUpdate = true;
+      });
+    }
+  });
+}
 
-function applyDormantLook() {
+function applyAwakenedTexture(tex) {
   if (!currentModel) return;
   currentModel.traverse((child) => {
     if (child.isMesh) {
@@ -301,30 +314,9 @@ function applyDormantLook() {
         ? child.material
         : [child.material];
       mats.forEach((m) => {
-        m.map = null;
-        m.color.set(0x888888);
+        m.map = tex;
+        m.color.set(0xffffff);
         m.vertexColors = false;
-        m.needsUpdate = true;
-      });
-    }
-  });
-}
-
-function restoreOriginalMaps() {
-  if (!currentModel) return;
-  currentModel.traverse((child) => {
-    if (child.isMesh) {
-      const origData = originalMaterials.get(child.uuid) || [];
-      const mats = Array.isArray(child.material)
-        ? child.material
-        : [child.material];
-      mats.forEach((m, i) => {
-        const orig = origData[i];
-        if (orig) {
-          m.map = orig.map;
-          if (orig.color) m.color.copy(orig.color);
-          m.vertexColors = orig.vertexColors;
-        }
         m.needsUpdate = true;
       });
     }
@@ -336,104 +328,94 @@ function toggleTexture() {
   isTransitioning.value = true;
 
   const toColor = !isColorMode.value;
-  const duration = 800;
-  const start = performance.now();
-  let swapped = false;
+  const texUrl = toColor ? stoneItem.value?.color_texture : null;
 
-  currentModel.traverse((child) => {
-    if (child.isMesh) {
-      const mats = Array.isArray(child.material)
-        ? child.material
-        : [child.material];
-      mats.forEach((m) => {
-        m.transparent = true;
-      });
-    }
-  });
+  const runTransition = (onMidpoint) => {
+    const duration = 800;
+    const start = performance.now();
+    let swapped = false;
 
-  let doSwap = () => (toColor ? restoreOriginalMaps() : applyDormantLook());
-
-  function animateFade(now) {
-    if (!currentModel) return;
-    const elapsed = now - start;
-    const progress = Math.min(elapsed / duration, 1);
-    const ease =
-      progress < 0.5
-        ? 2 * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-    if (progress < 0.5) {
-      currentModel.traverse((child) => {
-        if (child.isMesh) {
-          const mats = Array.isArray(child.material)
-            ? child.material
-            : [child.material];
-          mats.forEach((m) => {
-            m.opacity = 1 - ease * 2;
-          });
-        }
-      });
-    } else {
-      if (!swapped) {
-        swapped = true;
-        doSwap();
+    currentModel.traverse((c) => {
+      if (c.isMesh) {
+        const ms = Array.isArray(c.material) ? c.material : [c.material];
+        ms.forEach((m) => (m.transparent = true));
       }
-      currentModel.traverse((child) => {
-        if (child.isMesh) {
-          const mats = Array.isArray(child.material)
-            ? child.material
-            : [child.material];
-          mats.forEach((m) => {
-            m.opacity = (ease - 0.5) * 2;
-          });
-        }
-      });
-    }
+    });
 
-    if (progress < 1) {
-      requestAnimationFrame(animateFade);
-    } else {
-      currentModel.traverse((child) => {
-        if (child.isMesh) {
-          const mats = Array.isArray(child.material)
-            ? child.material
-            : [child.material];
-          mats.forEach((m) => {
-            m.opacity = 1;
-            m.transparent = false;
-          });
+    const animate = (now) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease =
+        progress < 0.5
+          ? 2 * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+      if (progress < 0.5) {
+        currentModel.traverse((c) => {
+          if (c.isMesh) {
+            const ms = Array.isArray(c.material) ? c.material : [c.material];
+            ms.forEach((m) => (m.opacity = 1 - ease * 2));
+          }
+        });
+      } else {
+        if (!swapped) {
+          swapped = true;
+          onMidpoint();
         }
-      });
-      isColorMode.value = toColor;
-      isTransitioning.value = false;
-    }
+        currentModel.traverse((c) => {
+          if (c.isMesh) {
+            const ms = Array.isArray(c.material) ? c.material : [c.material];
+            ms.forEach((m) => (m.opacity = (ease - 0.5) * 2));
+          }
+        });
+      }
+
+      if (progress < 1) requestAnimationFrame(animate);
+      else {
+        currentModel.traverse((c) => {
+          if (c.isMesh) {
+            const ms = Array.isArray(c.material) ? c.material : [c.material];
+            ms.forEach((m) => {
+              m.opacity = 1;
+              m.transparent = false;
+            });
+          }
+        });
+        isColorMode.value = toColor;
+        isTransitioning.value = false;
+      }
+    };
+    requestAnimationFrame(animate);
+  };
+
+  if (toColor && texUrl) {
+    new THREE.TextureLoader().load(texUrl, (t) => {
+      t.flipY = false;
+      t.colorSpace = THREE.SRGBColorSpace;
+      runTransition(() => applyAwakenedTexture(t));
+    });
+  } else {
+    runTransition(() => restoreStoneLook());
   }
-
-  requestAnimationFrame(animateFade);
 }
 </script>
 
 <style scoped>
-/* HUD floats fixed on top of fullscreen A-Frame */
 .ar-hud {
   position: fixed;
   inset: 0;
   z-index: 10;
   pointer-events: none;
 }
-
 .ar-hud-topbar {
   padding-top: max(1rem, env(safe-area-inset-top));
   padding-left: max(1rem, env(safe-area-inset-left));
-  padding-right: max(1rem, env(safe-area-inset-right));
 }
-
 .ar-hud-bottom {
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   padding-left: max(1rem, env(safe-area-inset-left));
   padding-right: max(1rem, env(safe-area-inset-right));
 }
-
 .slide-up-enter-active,
 .slide-up-leave-active {
   transition:
@@ -445,17 +427,8 @@ function toggleTexture() {
   transform: translateY(100%);
   opacity: 0;
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
 </style>
 
-<!-- Unscoped: ensure A-Frame fullscreen height chain works -->
 <style>
 html.a-fullscreen,
 html.a-fullscreen body,
@@ -465,10 +438,8 @@ html.a-fullscreen body > #app > * > a-scene {
   width: 100% !important;
   height: 100% !important;
   margin: 0 !important;
-  padding: 0 !important;
   overflow: hidden !important;
 }
-
 html.a-fullscreen body > #app > * > a-scene {
   position: fixed !important;
   inset: 0 !important;

@@ -343,7 +343,6 @@ function initARListeners() {
           );
         }
       });
-      applyDormantLook();
     });
   }
 }
