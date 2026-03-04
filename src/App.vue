@@ -38,17 +38,6 @@
           >
             AR 掃描
           </router-link>
-          <router-link
-            to="/arjs"
-            class="text-sm text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
-            active-class="!text-emerald-400 font-semibold"
-          >
-            AR.js 測試
-            <span
-              class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold leading-none"
-              >NEW</span
-            >
-          </router-link>
         </div>
       </div>
     </nav>
